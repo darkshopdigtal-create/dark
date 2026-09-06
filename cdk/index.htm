@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" id="html-root">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="page-title">تفعيل ChatGPT Business</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #0b0f19; color: #f8fafc; display: flex; justify-content: center; align-items: center; height: 100vh; position: relative; }
+        
+        /* زر تغيير اللغة الصغير في الزاوية */
+        .lang-switcher { position: absolute; top: 25px; left: 25px; background: rgba(30, 41, 59, 0.7); border: 1px solid #334155; color: #38bdf8; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; }
+        .lang-switcher:hover { background: #1e293b; border-color: #38bdf8; }
+
+        .container { background-color: #1e293b; padding: 35px; border-radius: 16px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4); width: 100%; max-width: 420px; border: 1px solid #334155; }
+        h2 { text-align: center; margin-bottom: 25px; color: #f8fafc; font-size: 22px; font-weight: 600; }
+        h2 span { color: #38bdf8; }
+        
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-size: 13px; color: #94a3b8; font-weight: 500; }
+        input { width: 100%; padding: 12px 16px; background-color: #0f172a; border: 1px solid #334155; border-radius: 10px; color: white; font-size: 15px; outline: none; transition: border-color 0.2s; }
+        input:focus { border-color: #38bdf8; }
+        
+        button[type="submit"] { width: 100%; padding: 12px; background-color: #0284c7; border: none; border-radius: 10px; color: white; font-size: 15px; font-weight: 600; cursor: pointer; transition: background-color 0.2s; }
+        button[type="submit"]:hover { background-color: #0369a1; }
+        
+        #status-message { margin-top: 15px; text-align: center; font-size: 13px; }
+        .loading { color: #facc15; } .error { color: #f87171; }
+    </style>
+</head>
+<body>
+
+    <button class="lang-switcher" onclick="toggleLanguage()" id="lang-btn">EN</button>
+
+    <div class="container">
+        <h2>ChatGPT <span>Business</span></h2>
+        <form id="code-form">
+            <div class="form-group">
+                <label for="cdk" id="label-cdk">كود التفعيل (CDK)</label>
+                <input type="text" id="cdk" placeholder="XXXX-XXXX-XXXX" required>
+            </div>
+            <button type="submit" id="check-btn">تحقق من الكود</button>
+        </form>
+        <div id="status-message"></div>
+    </div>
+
+    <script>
+        let currentLang = 'ar';
+        const texts = {
+            ar: { btnLang: "EN", labelCdk: "كود التفعيل (CDK)", placeholderCdk: "XXXX-XXXX-XXXX", checkBtn: "تحقق من الكود", loading: "جاري التحقق...", invalid: "الكود غير صالح أو مستخدم مسبقاً.", serverError: "خطأ في الاتصال بالسيرفر." },
+            en: { btnLang: "AR", labelCdk: "Activation Code (CDK)", placeholderCdk: "XXXX-XXXX-XXXX", checkBtn: "Verify Code", loading: "Verifying...", invalid: "Invalid or used code.", serverError: "Server connection error." }
+        };
+
+        function toggleLanguage() {
+            currentLang = currentLang === 'ar' ? 'en' : 'ar';
+            const t = texts[currentLang];
+            document.getElementById('html-root').setAttribute('dir', currentLang === 'ar' ? 'rtl' : 'ltr');
+            document.getElementById('html-root').setAttribute('lang', currentLang);
+            document.getElementById('lang-btn').innerText = t.btnLang;
+            document.getElementById('label-cdk').innerText = t.labelCdk;
+            document.getElementById('cdk').placeholder = t.placeholderCdk;
+            document.getElementById('check-btn').innerText = t.checkBtn;
+        }
+
+        document.getElementById('code-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const cdk = document.getElementById('cdk').value.trim();
+            const statusDiv = document.getElementById('status-message');
+            const checkBtn = document.getElementById('check-btn');
+            const t = texts[currentLang];
+
+            statusDiv.className = 'loading';
+            statusDiv.innerText = t.loading;
+            checkBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/verify-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cdk })
+                });
+
+                if (response.ok) {
+                    localStorage.setItem('valid_cdk', cdk);
+                    window.location.href = 'activate.html';
+                } else {
+                    statusDiv.className = 'error';
+                    statusDiv.innerText = t.invalid;
+                    checkBtn.disabled = false;
+                }
+            } catch (error) {
+                statusDiv.className = 'error';
+                statusDiv.innerText = t.serverError;
+                checkBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
