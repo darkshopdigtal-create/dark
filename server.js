@@ -4,7 +4,6 @@ const path = require('path');
 const fs = require('fs');
 const puppeteer = require('puppeteer');
 
-// 💡 تعريف تطبيق الـ Express أولاً (وهو ما كان ناقصاً وسبب الخطأ)
 const app = express();
 
 app.use(express.json());
@@ -45,6 +44,9 @@ function writeDB(data) {
 
 const ADMIN_PASSWORD = "FOAD_SECRET_ADMIN_2026";
 const ADMIN_TOKEN = "Bearer-Secret-Token-123456";
+
+// قائمة البروموكودات
+const VALID_PROMO_CODES = ["MY-SECRET-PROMO-2026", "GHOSTVIP3"];
 
 // 1. تسجيل دخول الأدمن
 app.post('/api/admin/login', (req, res) => {
@@ -96,7 +98,16 @@ app.post('/api/verify-code', (req, res) => {
     res.status(200).json({ message: 'الكود صالح' });
 });
 
-// 6. مسار الأتمتة
+// 6. التحقق من البروموكود
+app.post('/api/verify-promo', (req, res) => {
+    const { promoCode } = req.body;
+    if (!promoCode || !VALID_PROMO_CODES.includes(promoCode)) {
+        return res.status(400).json({ message: 'الرمز غير صحيح أو منتهي الصلاحية' });
+    }
+    res.status(200).json({ message: 'الرمز صالح' });
+});
+
+// 7. مسار الأتمتة وفحص مكان التوقف بدقة
 app.post('/api/activate-business', async (req, res) => {
     const { cdk, sessionData } = req.body;
     const db = readDB();
@@ -130,13 +141,17 @@ app.post('/api/activate-business', async (req, res) => {
         }
         await page.reload({ waitUntil: 'networkidle2' });
 
+        // الانتقال لصفحة الفوترة
         await page.goto('https://chatgpt.com/#settings/billing', { waitUntil: 'networkidle2' });
-        await new Promise(r => setTimeout(r, 4000));
+        await new Promise(r => setTimeout(r, 5000));
+
+        const currentUrl = page.url();
+        const pageTitle = await page.title();
 
         await browser.close();
 
-        return res.status(200).json({ 
-            message: 'تم تفعيل المتصفح والوصول لصفحة الفوترة بنجاح!' 
+        return res.status(400).json({ 
+            message: `عنوان الصفحة الحالي: ${currentUrl} | اسم الصفحة: ${pageTitle}` 
         });
 
     } catch (e) {
