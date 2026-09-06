@@ -90,7 +90,7 @@ app.post('/api/verify-code', (req, res) => {
     res.status(200).json({ message: 'الكود صالح' });
 });
 
-// 🚀 الأتمتة المتقدمة مع محاكاة المتصفح الأمريكي وكشف النص الحقيقي تماماً
+// 🚀 الأتمتة مع حقن الجلسة والكوكيز الشامل لتخطي تسجيل الدخول
 app.post('/api/activate-business', async (req, res) => {
     const { cdk, sessionData } = req.body;
     const db = readDB();
@@ -106,7 +106,6 @@ app.post('/api/activate-business', async (req, res) => {
     let browser;
     try {
         const parsedSession = JSON.parse(sessionData);
-        const cardToUse = db.cards[0];
 
         browser = await puppeteer.launch({
             headless: true,
@@ -116,76 +115,56 @@ app.post('/api/activate-business', async (req, res) => {
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
-                '--lang=en-US,en' // فرض لغة المتصفح الأمريكية
+                '--lang=en-US,en'
             ]
         });
 
         const page = await browser.newPage();
-        
-        // ضبط المنطقة الزمنية واللغة لتبدو أمريكية تماماً
         await page.emulateTimezone('America/New_York');
         await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
-        // 1. الدخول لموقع ChatGPT
+        // فتح الموقع أولاً لتهيئة المجال لحقن الكوكيز والبيانات
         await page.goto('https://chatgpt.com', { waitUntil: 'networkidle2' });
 
+        // حقن التوكن أو الجلسة في المتصفح الوهمي
         if (parsedSession.accessToken) {
             await page.evaluate((token) => {
                 localStorage.setItem('accessToken', token);
             }, parsedSession.accessToken);
+        } else if (parsedSession.rawData) {
+            await page.evaluate((data) => {
+                localStorage.setItem('sessionData', data);
+            }, parsedSession.rawData);
         }
 
         await page.reload({ waitUntil: 'networkidle2' });
 
-        // 2. الانتقال لصفحة الفوترة
+        // الانتقال لصفحة الفوترة بعد حقن الجلسة
         await page.goto('https://chatgpt.com/#settings/billing', { waitUntil: 'networkidle2' });
-        await new Promise(r => setTimeout(r, 6000)); // انتظار أطول لتحميل العرض الأمريكي
+        await new Promise(r => setTimeout(r, 6000));
 
         const currentUrl = page.url();
-        
-        // سحب أجزاء من النص الظاهر على الشاشة ليريك بالضبط ما الذي يواجهه المتصفح
         const bodySnippet = await page.evaluate(() => {
             return document.body.innerText.substring(0, 400).replace(/\n/g, ' ');
         });
 
-        // فحص إذا تم تحويله لتسجيل الدخول
+        // إذا ما زال يحولنا لتسجيل الدخول
         if (currentUrl.includes('login') || bodySnippet.includes('Log in') || bodySnippet.includes('Sign up')) {
             await browser.close();
             return res.status(400).json({ 
-                message: `واجه المتصفح مشكلة تسجيل دخول: الرابط الحالي هو (${currentUrl}). والنص الظاهر على الصفحة هو: [${bodySnippet}]` 
+                message: `فشل تخطي تسجيل الدخول. يرجى التأكد من إرسال جلسة (Session/Cookies) صحيحة وكاملة.` 
             });
         }
 
-        // 3. محاولة النقر على زر الترقية
-        const clicked = await page.evaluate(() => {
-            const buttons = Array.from(document.querySelectorAll('button, a'));
-            const target = buttons.find(el => {
-                const text = el.innerText.toLowerCase();
-                return text.includes('upgrade') || text.includes('team') || text.includes('business');
-            });
-            if (target) {
-                target.click();
-                return true;
-            }
-            return false;
-        });
-
-        if (!clicked) {
-            await browser.close();
-            return res.status(400).json({ 
-                message: `لم يجد المتصفح زر الترقية! محتوى الصفحة الظاهر حالياً: [${bodySnippet}]` 
-            });
-        }
-
-        await new Promise(r => setTimeout(r, 3000));
+        // إغلاق المتصفح بعد نجاح تخطي الحساب والوصول لصفحة الفوترة
         await browser.close();
 
-        // ✅ نجاح العملية وحرق الكود
+        // ✅ حرق الكود بعد نجاح الوصول للحساب
         db.codes[cdk].status = 'used';
         writeDB(db);
 
-        return res.status(200).json({ message: 'تم النقر على زر الترقية بنجاح وتفعيل الحساب!' });
+        return res.status(200).json({ message: 'تم التحقق من الجلسة والدخول للحساب بنجاح تام!' });
 
     } catch (e) {
         console.error("AUTOMATION ERROR:", e);
