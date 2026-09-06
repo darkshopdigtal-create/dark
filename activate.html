@@ -13,12 +13,13 @@
         .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 6px; font-size: 13px; color: #94a3b8; }
         input, textarea { width: 100%; padding: 10px 12px; background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; color: white; font-size: 13px; outline: none; }
-        textarea { height: 90px; resize: none; }
+        textarea { height: 110px; resize: none; }
         input:focus, textarea:focus { border-color: #38bdf8; }
         button { width: 100%; padding: 12px; background-color: #16a34a; border: none; border-radius: 10px; color: white; font-size: 15px; font-weight: 600; cursor: pointer; }
         button:hover { background-color: #15803d; }
         #status-message { margin-top: 15px; text-align: center; font-size: 13px; }
         .loading { color: #facc15; } .success { color: #4ade80; } .error { color: #f87171; }
+        .hint { font-size: 11px; color: #64748b; margin-top: 4px; }
     </style>
 </head>
 <body>
@@ -28,16 +29,15 @@
         <div style="text-align: center;"><span class="badge">Ghost Store System</span></div>
         
         <form id="activate-form">
-            <!-- خانة كود التفعيل CDK -->
             <div class="form-group">
                 <label for="cdk_input">كود التفعيل الخاص بك (CDK)</label>
                 <input type="text" id="cdk_input" placeholder="مثال: GHOST-XXXX" required>
             </div>
 
-            <!-- خانة جلسة شات جي بي تي -->
             <div class="form-group">
-                <label for="session_data">بيانات الجلسة (ChatGPT Session / Access Token)</label>
-                <textarea id="session_data" placeholder='الصق محتوى الـ session أو التوكن هنا...' required></textarea>
+                <label for="session_data">بيانات الجلسة الكاملة (Session / Cookies / Token)</label>
+                <textarea id="session_data" placeholder='الصق بيانات الجلسة أو الكوكيز الخاصة بحسابك هنا...' required></textarea>
+                <div class="hint">ملاحظة: تأكد من لصق بيانات الجلسة الكاملة لكي يتمكن السيرفر من تخطي تسجيل الدخول.</div>
             </div>
 
             <button type="submit" id="submit-btn">إتمام التفعيل الأوتوماتيكي</button>
@@ -47,7 +47,6 @@
     </div>
 
     <script>
-        // سحب الـ CDK تلقائياً إذا كان مخزناً من الصفحة الرئيسية
         const savedCdk = localStorage.getItem('valid_cdk');
         if (savedCdk) {
             document.getElementById('cdk_input').value = savedCdk;
@@ -61,14 +60,14 @@
             const submitBtn = document.getElementById('submit-btn');
 
             statusDiv.className = 'loading';
-            statusDiv.innerText = 'جاري معالجة الجلسة وتنفيذ الترقية أوتوماتيكياً...';
+            statusDiv.innerText = 'جاري حقن الجلسة وتنفيذ الترقية أوتوماتيكياً...';
             submitBtn.disabled = true;
 
             let sessionDataToSend = rawSessionData;
             try {
                 JSON.parse(rawSessionData);
             } catch (err) {
-                sessionDataToSend = JSON.stringify({ accessToken: rawSessionData });
+                sessionDataToSend = JSON.stringify({ rawData: rawSessionData });
             }
 
             try {
