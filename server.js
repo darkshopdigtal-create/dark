@@ -90,7 +90,7 @@ app.post('/api/verify-code', (req, res) => {
     res.status(200).json({ message: 'الكود صالح' });
 });
 
-// 🚀 الأتمتة المطورة خصيصاً لاستخراج وحقن sessionToken و accessToken ككوكيز حقيقية
+// 🚀 الأتمتة مع معالجة ذكية للكوكيز لتخطي الحماية
 app.post('/api/activate-business', async (req, res) => {
     const { cdk, sessionData } = req.body;
     const db = readDB();
@@ -105,19 +105,20 @@ app.post('/api/activate-business', async (req, res) => {
 
     let browser;
     try {
+        // قراءة ذكية وآمنة للجلسة لمنع خطأ undefined
         let sessionJson;
         try {
-            sessionJson = JSON.parse(sessionData);
+            let temp = JSON.parse(sessionData);
+            sessionJson = temp.rawData ? JSON.parse(temp.rawData) : temp;
         } catch (err) {
-            // إذا كانت مرسلة بشكل نصي مباشر
-            sessionJson = JSON.parse(JSON.parse(sessionData).rawData);
+            return res.status(400).json({ message: 'صيغة الجلسة غير صالحة. تأكد من النسخ الصحيح.' });
         }
 
         const accessToken = sessionJson.accessToken;
         const sessionToken = sessionJson.sessionToken;
 
         if (!accessToken || !sessionToken) {
-            return res.status(400).json({ message: 'بيانات الجلسة غير صالحة أو ناقصة (يتطلب accessToken و sessionToken).' });
+            return res.status(400).json({ message: 'بيانات الجلسة ناقصة. يرجى لصق الجلسة بالكامل.' });
         }
 
         browser = await puppeteer.launch({
@@ -142,20 +143,19 @@ app.post('/api/activate-business', async (req, res) => {
         // فتح الموقع لإنشاء بيئة الكوكيز
         await page.goto('https://chatgpt.com', { waitUntil: 'domcontentloaded' });
 
-        // حقن الـ SessionToken ككوكي حقيقي للموقع لتخطي تسجيل الدخول تماماً
+        // حقن الـ SessionToken بشكل آمن باستخدام url بدلاً من domain
         await page.setCookie({
             name: '__Secure-next-auth.session-token',
-            value: sessionToken,
-            domain: '.chatgpt.com',
-            path: '/',
+            value: String(sessionToken), // نضمن أنها نص
+            url: 'https://chatgpt.com',
             httpOnly: true,
             secure: true
         });
 
-        // حقن الـ AccessToken في الـ LocalStorage احتياطياً
+        // حقن الـ AccessToken
         await page.evaluate((token) => {
             localStorage.setItem('accessToken', token);
-        }, accessToken);
+        }, String(accessToken));
 
         await page.reload({ waitUntil: 'domcontentloaded' });
 
@@ -181,7 +181,7 @@ app.post('/api/activate-business', async (req, res) => {
         db.codes[cdk].status = 'used';
         writeDB(db);
 
-        return res.status(200).json({ message: 'تم حقن الجلسة والدخول لحساب Jamie Thomas بنجاح تام!' });
+        return res.status(200).json({ message: 'نجح المتصفح في حقن الكوكيز وتخطي تسجيل الدخول بامتياز!' });
 
     } catch (e) {
         console.error("AUTOMATION ERROR:", e);
