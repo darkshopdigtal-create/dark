@@ -1,10 +1,13 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const app = express();
 
 app.use(express.json());
 app.use(cors());
-app.use(express.static('public'));
+
+// قراءة ملفات الواجهة مباشرة من نفس مجلد المشروع
+app.use(express.static(__dirname));
 
 // قاعدة بيانات وهمية مؤقتة (لغرض التجربة)
 let databaseCodes = {
@@ -12,7 +15,7 @@ let databaseCodes = {
     "VIP-9999": { status: "active" }
 };
 
-// 1. التحقق من الكود
+// 1. مسار التحقق من الكود
 app.post('/api/verify-code', (req, res) => {
     const { cdk } = req.body;
     if (!cdk || !databaseCodes[cdk]) {
@@ -24,7 +27,7 @@ app.post('/api/verify-code', (req, res) => {
     res.status(200).json({ message: 'الكود صالح' });
 });
 
-// 2. التفعيل التلقائي (وحرق الكود فقط عند النجاح التام)
+// 2. مسار التفعيل التلقائي (وحرق الكود فقط عند النجاح التام)
 app.post('/api/activate-business', (req, res) => {
     const { cdk, sessionData } = req.body;
     
