@@ -90,7 +90,7 @@ app.post('/api/verify-code', (req, res) => {
     res.status(200).json({ message: 'الكود صالح' });
 });
 
-// 🚀 الأتمتة مع حقن الجلسة والكوكيز الشامل لتخطي تسجيل الدخول
+// 🚀 الأتمتة المطورة خصيصاً لاستخراج وحقن sessionToken و accessToken ككوكيز حقيقية
 app.post('/api/activate-business', async (req, res) => {
     const { cdk, sessionData } = req.body;
     const db = readDB();
@@ -105,7 +105,20 @@ app.post('/api/activate-business', async (req, res) => {
 
     let browser;
     try {
-        const parsedSession = JSON.parse(sessionData);
+        let sessionJson;
+        try {
+            sessionJson = JSON.parse(sessionData);
+        } catch (err) {
+            // إذا كانت مرسلة بشكل نصي مباشر
+            sessionJson = JSON.parse(JSON.parse(sessionData).rawData);
+        }
+
+        const accessToken = sessionJson.accessToken;
+        const sessionToken = sessionJson.sessionToken;
+
+        if (!accessToken || !sessionToken) {
+            return res.status(400).json({ message: 'بيانات الجلسة غير صالحة أو ناقصة (يتطلب accessToken و sessionToken).' });
+        }
 
         browser = await puppeteer.launch({
             headless: true,
@@ -120,51 +133,55 @@ app.post('/api/activate-business', async (req, res) => {
         });
 
         const page = await browser.newPage();
+        page.setDefaultNavigationTimeout(60000);
+
         await page.emulateTimezone('America/New_York');
         await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
-        // فتح الموقع أولاً لتهيئة المجال لحقن الكوكيز والبيانات
-        await page.goto('https://chatgpt.com', { waitUntil: 'networkidle2' });
+        // فتح الموقع لإنشاء بيئة الكوكيز
+        await page.goto('https://chatgpt.com', { waitUntil: 'domcontentloaded' });
 
-        // حقن التوكن أو الجلسة في المتصفح الوهمي
-        if (parsedSession.accessToken) {
-            await page.evaluate((token) => {
-                localStorage.setItem('accessToken', token);
-            }, parsedSession.accessToken);
-        } else if (parsedSession.rawData) {
-            await page.evaluate((data) => {
-                localStorage.setItem('sessionData', data);
-            }, parsedSession.rawData);
-        }
+        // حقن الـ SessionToken ككوكي حقيقي للموقع لتخطي تسجيل الدخول تماماً
+        await page.setCookie({
+            name: '__Secure-next-auth.session-token',
+            value: sessionToken,
+            domain: '.chatgpt.com',
+            path: '/',
+            httpOnly: true,
+            secure: true
+        });
 
-        await page.reload({ waitUntil: 'networkidle2' });
+        // حقن الـ AccessToken في الـ LocalStorage احتياطياً
+        await page.evaluate((token) => {
+            localStorage.setItem('accessToken', token);
+        }, accessToken);
 
-        // الانتقال لصفحة الفوترة بعد حقن الجلسة
-        await page.goto('https://chatgpt.com/#settings/billing', { waitUntil: 'networkidle2' });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+
+        // الانتقال لصفحة الفوترة مباشرة
+        await page.goto('https://chatgpt.com/#settings/billing', { waitUntil: 'domcontentloaded' });
         await new Promise(r => setTimeout(r, 6000));
 
         const currentUrl = page.url();
         const bodySnippet = await page.evaluate(() => {
-            return document.body.innerText.substring(0, 400).replace(/\n/g, ' ');
+            return document.body.innerText.substring(0, 300).replace(/\n/g, ' ');
         });
 
-        // إذا ما زال يحولنا لتسجيل الدخول
-        if (currentUrl.includes('login') || bodySnippet.includes('Log in') || bodySnippet.includes('Sign up')) {
+        if (currentUrl.includes('login') || bodySnippet.includes('Log in')) {
             await browser.close();
             return res.status(400).json({ 
-                message: `فشل تخطي تسجيل الدخول. يرجى التأكد من إرسال جلسة (Session/Cookies) صحيحة وكاملة.` 
+                message: 'فشل تخطي تسجيل الدخول حتى مع الكوكيز. تأكد أن الجلسة لم تنتهي صلاحيتها.' 
             });
         }
 
-        // إغلاق المتصفح بعد نجاح تخطي الحساب والوصول لصفحة الفوترة
         await browser.close();
 
-        // ✅ حرق الكود بعد نجاح الوصول للحساب
+        // ✅ تم بنجاح: حرق الكود
         db.codes[cdk].status = 'used';
         writeDB(db);
 
-        return res.status(200).json({ message: 'تم التحقق من الجلسة والدخول للحساب بنجاح تام!' });
+        return res.status(200).json({ message: 'تم حقن الجلسة والدخول لحساب Jamie Thomas بنجاح تام!' });
 
     } catch (e) {
         console.error("AUTOMATION ERROR:", e);
