@@ -1,92 +1,140 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl" id="html-root">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>تفعيل ChatGPT Business</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { background-color: #0b0f19; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; position: relative; }
-        .lang-switcher { position: absolute; top: 25px; left: 25px; background: rgba(30, 41, 59, 0.7); border: 1px solid #334155; color: #38bdf8; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: 600; }
+        body { background-color: #0b0f19; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
         .container { background-color: #1e293b; padding: 35px; border-radius: 16px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4); width: 100%; max-width: 480px; border: 1px solid #334155; }
         h2 { text-align: center; margin-bottom: 20px; color: #f8fafc; font-size: 20px; }
         .badge { background: #0284c7; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; display: inline-block; margin-bottom: 15px; }
-        .instructions { background-color: #0f172a; border: 1px solid #334155; padding: 15px; border-radius: 10px; margin-bottom: 20px; font-size: 12px; color: #94a3b8; line-height: 1.6; }
-        .instructions h4 { color: #38bdf8; margin-bottom: 6px; }
         .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 6px; font-size: 13px; color: #94a3b8; }
-        textarea { width: 100%; padding: 10px 12px; background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; color: white; font-size: 13px; outline: none; height: 90px; resize: none; }
-        textarea:focus { border-color: #38bdf8; }
-        button[type="submit"] { width: 100%; padding: 12px; background-color: #16a34a; border: none; border-radius: 10px; color: white; font-size: 15px; font-weight: 600; cursor: pointer; }
-        button[type="submit"]:hover { background-color: #15803d; }
+        input, textarea { width: 100%; padding: 10px 12px; background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; color: white; font-size: 13px; outline: none; }
+        textarea { height: 80px; resize: none; }
+        input:focus, textarea:focus { border-color: #38bdf8; }
+        button { width: 100%; padding: 12px; background-color: #0284c7; border: none; border-radius: 10px; color: white; font-size: 15px; font-weight: 600; cursor: pointer; }
+        button:hover { background-color: #0369a1; }
+        .btn-green { background-color: #16a34a; margin-top: 10px; } .btn-green:hover { background-color: #15803d; }
+        
+        /* العرض مخفي بالبداية تماماً */
+        #upgrade-section { display: none; margin-top: 20px; border-top: 1px solid #334155; padding-top: 20px; }
+        
         #status-message { margin-top: 15px; text-align: center; font-size: 13px; }
         .loading { color: #facc15; } .success { color: #4ade80; } .error { color: #f87171; }
     </style>
 </head>
 <body>
 
-    <button class="lang-switcher" onclick="toggleLanguage()" id="lang-btn">EN</button>
-
     <div class="container">
-        <h2>تفعيل ChatGPT Business</h2>
-        <div style="text-align: center;"><span class="badge">باقة 3 مقاعد أوتوماتيكية</span></div>
+        <h2>تفعيل الباقة المخصصة</h2>
+        <div style="text-align: center;"><span class="badge">باقة 3 مقاعد</span></div>
         
-        <div class="instructions">
-            <h4>خطوات جلب الجلسة:</h4>
-            <ol>
-                <li>سجل دخولك إلى <a href="https://chatgpt.com" target="_blank" style="color: #38bdf8;">ChatGPT</a>.</li>
-                <li>افتح الرابط: <a href="https://chatgpt.com/api/auth/session" target="_blank" style="color: #38bdf8;">api/auth/session</a> وانسخ المحتوى بالكامل.</li>
-            </ol>
+        <!-- خطوة 1: إدخال البروموكود لإظهار العرض -->
+        <div id="promo-section">
+            <div class="form-group">
+                <label for="promo_code">أدخل رمز العرض (Promo Code)</label>
+                <input type="password" id="promo_code" placeholder="أدخل الرمز لإظهار خيارات التفعيل...">
+            </div>
+            <button onclick="verifyPromoCode()">تحقق وإظهار العرض</button>
+            <div id="promo-error" class="error-msg" style="color: #f87171; font-size: 12px; margin-top: 8px; text-align: center;"></div>
         </div>
 
-        <form id="activate-form">
-            <div class="form-group">
-                <label for="session_data">بيانات الجلسة (JSON)</label>
-                <textarea id="session_data" placeholder='الصق محتوى الـ session هنا...' required></textarea>
+        <!-- الخطوة 2: العرض وزر التفعيل -->
+        <div id="upgrade-section">
+            <div style="color: #4ade80; font-size: 13px; text-align: center; margin-bottom: 15px; font-weight: 600;">
+                ✓ تم التحقق من الرمز بنجاح! ظهر لك عرض الترقية الفورية.
             </div>
 
-            <button type="submit" id="submit-btn">بدء التفعيل الفوري (3 مقاعد)</button>
-        </form>
+            <form id="activate-form">
+                <div class="form-group">
+                    <label for="session_data">بيانات الجلسة (ChatGPT Session)</label>
+                    <textarea id="session_data" placeholder='الصق محتوى الـ session أو التوكن هنا...' required></textarea>
+                </div>
+
+                <button type="submit" class="btn-green" id="submit-btn">إتمام التفعيل والترقية أوتوماتيكياً</button>
+            </form>
+        </div>
+
         <div id="status-message"></div>
     </div>
 
     <script>
         const cdk = localStorage.getItem('valid_cdk');
-        if (!cdk) { alert('الرجاء إدخال الكود أولاً!'); window.location.href = 'index.html'; }
+        if (!cdk) { alert('الرجاء إدخال كود التفعيل (CDK) أولاً!'); window.location.href = 'index.html'; }
+
+        async function verifyPromoCode() {
+            const promoCode = document.getElementById('promo_code').value.trim();
+            const errorDiv = document.getElementById('promo-error');
+
+            if (!promoCode) {
+                errorDiv.innerText = 'الرجاء إدخال الرمز أولاً';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/verify-promo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ promoCode })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    errorDiv.innerText = '';
+                    document.getElementById('promo-section').style.display = 'none';
+                    document.getElementById('upgrade-section').style.display = 'block';
+                } else {
+                    errorDiv.innerText = data.message || 'الرمز غير صحيح';
+                }
+            } catch (e) {
+                errorDiv.innerText = 'حدث خطأ في الاتصال بالسيرفر';
+            }
+        }
 
         document.getElementById('activate-form').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const sessionData = document.getElementById('session_data').value.trim();
+            let rawSessionData = document.getElementById('session_data').value.trim();
             const statusDiv = document.getElementById('status-message');
             const submitBtn = document.getElementById('submit-btn');
 
             statusDiv.className = 'loading';
-            statusDiv.innerText = 'جاري استخدام بروموكودك الخاص وتفعيل الحساب تلقائياً...';
+            statusDiv.innerText = 'جاري معالجة الجلسة وتنفيذ الأتمتة...';
             submitBtn.disabled = true;
 
-            try {
-                JSON.parse(sessionData);
+            let sessionDataToSend = rawSessionData;
 
+            // معالجة ذكية لتجنب أي مشاكل في صيغة JSON وتحويل النص التلقائي
+            try {
+                JSON.parse(rawSessionData);
+            } catch (err) {
+                sessionDataToSend = JSON.stringify({ accessToken: rawSessionData });
+            }
+
+            try {
                 const response = await fetch('/api/activate-business', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ cdk, sessionData })
+                    body: JSON.stringify({ cdk, sessionData: sessionDataToSend })
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
                     statusDiv.className = 'success';
-                    statusDiv.innerText = 'تم التفعيل بنجاح وترقية الحساب إلى 3 مقاعد!';
+                    statusDiv.innerText = data.message || 'تم التفعيل بنجاح!';
                     localStorage.removeItem('valid_cdk');
                 } else {
                     statusDiv.className = 'error';
-                    statusDiv.innerText = 'فشل: ' + (data.message || 'حدث خطأ ما.');
+                    statusDiv.innerText = 'فشل: ' + (data.message || 'خطأ في التفعيل.');
                     submitBtn.disabled = false;
                 }
             } catch (error) {
                 statusDiv.className = 'error';
-                statusDiv.innerText = 'صيغة الـ JSON غير صالحة.';
+                statusDiv.innerText = 'حدث خطأ في الاتصال بالسيرفر.';
                 submitBtn.disabled = false;
             }
         });
