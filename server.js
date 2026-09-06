@@ -110,7 +110,7 @@ app.post('/api/verify-code', (req, res) => {
     res.status(200).json({ message: 'الكود صالح' });
 });
 
-// 6. الأتمتة الحقيقية وتشغيل المتصفح الوهمي للدفع
+// 6. الأتمتة وكشف الخطأ الحقيقي بدلاً من النجاح الوهمي
 app.post('/api/activate-business', async (req, res) => {
     const { cdk, sessionData } = req.body;
     const db = readDB();
@@ -131,19 +131,13 @@ app.post('/api/activate-business', async (req, res) => {
         browser = await puppeteer.launch({
             headless: true,
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--disable-gpu'
-            ]
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
         });
 
         const page = await browser.newPage();
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-        // الانتقال وحقن الجلسة
+        console.log("1. فتح موقع ChatGPT...");
         await page.goto('https://chatgpt.com', { waitUntil: 'networkidle2' });
 
         if (parsedSession.accessToken) {
@@ -153,28 +147,26 @@ app.post('/api/activate-business', async (req, res) => {
         }
 
         await page.reload({ waitUntil: 'networkidle2' });
+
+        console.log("2. الانتقال لصفحة الفوترة...");
         await page.goto('https://chatgpt.com/#settings/billing', { waitUntil: 'networkidle2' });
 
-        // (هنا يتم تنفيذ خطوات النقر وإدخال بيانات بطاقتك cardToUse في الواجهة)
-        let isUpgradeSuccessful = true; 
+        // الانتظار قليلاً للتأكد من التحميل
+        await new Promise(r => setTimeout(r, 4000));
 
         await browser.close();
 
-        if (isUpgradeSuccessful) {
-            // ✅ نجح التفعيل: حفظ حالة الكود كمستخدم في الملف الدائم لكي يُحرق ولن يتكرر
-            db.codes[cdk].status = 'used';
-            writeDB(db);
-            return res.status(200).json({ message: 'تمت الأتمتة وترقية الحساب إلى 3 مقاعد ببطاقتك بنجاح!' });
-        } else {
-            return res.status(400).json({ message: 'فشلت عملية الترقية بالبطاقة، الكود لم يُحرق.' });
-        }
+        // إرجاع رسالة واضحة توضح أين وصل التنفيذ تماماً
+        return res.status(400).json({ 
+            message: 'حالة التقدم: نجح السيرفر في فتح المتصفح والدخول لحساب الزبون وفتح صفحة الفوترة، لكن التفعيل لم يكتمل لعدم وجود أكواد النقر وإدخال البطاقة بعد.' 
+        });
 
     } catch (e) {
         console.error("AUTOMATION ERROR:", e);
         if (browser) {
             try { await browser.close(); } catch (err) {}
         }
-        return res.status(500).json({ message: 'خطأ تقني أثناء الأتمتة: ' + e.message });
+        return res.status(500).json({ message: 'خطأ تقني دقيق: ' + e.message });
     }
 });
 
