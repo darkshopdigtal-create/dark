@@ -45,10 +45,6 @@ function writeDB(data) {
 const ADMIN_PASSWORD = "FOAD_SECRET_ADMIN_2026";
 const ADMIN_TOKEN = "Bearer-Secret-Token-123456";
 
-// قائمة البروموكودات
-const VALID_PROMO_CODES = ["MY-SECRET-PROMO-2026", "GHOSTVIP3"];
-
-// 1. تسجيل دخول الأدمن
 app.post('/api/admin/login', (req, res) => {
     const { password } = req.body;
     if (password === ADMIN_PASSWORD) {
@@ -57,7 +53,6 @@ app.post('/api/admin/login', (req, res) => {
     res.status(401).json({ message: 'كلمة المرور خاطئة!' });
 });
 
-// 2. جلب البيانات
 app.get('/api/admin/data', (req, res) => {
     const auth = req.headers['authorization'];
     if (auth !== ADMIN_TOKEN) return res.status(403).json({ message: 'غير مسموح' });
@@ -65,7 +60,6 @@ app.get('/api/admin/data', (req, res) => {
     res.status(200).json({ codes: db.codes, cards: db.cards.map(c => ({ number: c.number })) });
 });
 
-// 3. توليد كود جديد
 app.post('/api/admin/generate', (req, res) => {
     const auth = req.headers['authorization'];
     if (auth !== ADMIN_TOKEN) return res.status(403).json({ message: 'غير مسموح' });
@@ -77,7 +71,6 @@ app.post('/api/admin/generate', (req, res) => {
     res.status(200).json({ message: 'تم التوليد والحفظ بنجاح', newCode });
 });
 
-// 4. حفظ البطاقة
 app.post('/api/admin/add-card', (req, res) => {
     const auth = req.headers['authorization'];
     if (auth !== ADMIN_TOKEN) return res.status(403).json({ message: 'غير مسموح' });
@@ -89,7 +82,7 @@ app.post('/api/admin/add-card', (req, res) => {
     res.status(200).json({ message: 'تم حفظ البطاقة بشكل دائم في السيرفر' });
 });
 
-// 5. التحقق من كود الزبون
+// التحقق من كود الـ CDK للزبون
 app.post('/api/verify-code', (req, res) => {
     const { cdk } = req.body;
     const db = readDB();
@@ -98,16 +91,7 @@ app.post('/api/verify-code', (req, res) => {
     res.status(200).json({ message: 'الكود صالح' });
 });
 
-// 6. التحقق من البروموكود
-app.post('/api/verify-promo', (req, res) => {
-    const { promoCode } = req.body;
-    if (!promoCode || !VALID_PROMO_CODES.includes(promoCode)) {
-        return res.status(400).json({ message: 'الرمز غير صحيح أو منتهي الصلاحية' });
-    }
-    res.status(200).json({ message: 'الرمز صالح' });
-});
-
-// 7. مسار الأتمتة وفحص مكان التوقف بدقة
+// 🚀 الأتمتة الكاملة عبر رابط العرض والبطاقة المخزنة
 app.post('/api/activate-business', async (req, res) => {
     const { cdk, sessionData } = req.body;
     const db = readDB();
@@ -123,6 +107,7 @@ app.post('/api/activate-business', async (req, res) => {
     let browser;
     try {
         const parsedSession = JSON.parse(sessionData);
+        const cardToUse = db.cards[0]; // سحب بطاقتك المخزنة بأمان
 
         browser = await puppeteer.launch({
             headless: true,
@@ -133,6 +118,7 @@ app.post('/api/activate-business', async (req, res) => {
         const page = await browser.newPage();
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
+        // 1. تسجيل الدخول بحساب الزبون
         await page.goto('https://chatgpt.com', { waitUntil: 'networkidle2' });
         if (parsedSession.accessToken) {
             await page.evaluate((token) => {
@@ -141,25 +127,87 @@ app.post('/api/activate-business', async (req, res) => {
         }
         await page.reload({ waitUntil: 'networkidle2' });
 
-        // الانتقال لصفحة الفوترة
+        // 2. الانتقال المباشر لصفحة الفوترة ورابط عرض الترقية
         await page.goto('https://chatgpt.com/#settings/billing', { waitUntil: 'networkidle2' });
+        await new Promise(r => setTimeout(r, 4000));
+
+        // 3. النقر على زر الترقية الخاص بالعرض
+        await page.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll('button, a'));
+            const upgradeBtn = buttons.find(el => el.innerText.includes('Upgrade') || el.innerText.includes('ترقية') || el.innerText.includes('Team'));
+            if (upgradeBtn) upgradeBtn.click();
+        });
+
+        await new Promise(r => setTimeout(r, 3000));
+
+        // 4. تغيير عدد المقاعد إلى 3 مقاعد
+        await page.evaluate(() => {
+            const inputs = Array.from(document.querySelectorAll('input'));
+            const seatsInput = inputs.find(input => input.value == '5' || input.type === 'number');
+            if (seatsInput) {
+                seatsInput.value = '3';
+                seatsInput.dispatchEvent(new Event('input', { bubbles: true }));
+                seatsInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
+
+        await new Promise(r => setTimeout(r, 2000));
+
+        // 5. إدخال بيانات البطاقة المخزنة داخل الحقول
+        const frames = page.frames();
+        for (const frame of frames) {
+            try {
+                const cardInput = await frame.$('input[name="cardnumber"]');
+                if (cardInput) {
+                    await frame.type('input[name="cardnumber"]', cardToUse.number, { delay: 30 });
+                    await frame.type('input[name="exp-date"]', cardToUse.expiry, { delay: 30 });
+                    await frame.type('input[name="cvc"]', cardToUse.cvv, { delay: 30 });
+                    break;
+                }
+            } catch (err) {}
+        }
+
+        // 6. إدخال اسم عشوائي وولاية بدون ضريبة (Oregon - OR)
+        await page.evaluate(() => {
+            const nameInput = document.querySelector('input[name="name"]');
+            if (nameInput) {
+                nameInput.value = "Foad Ghost";
+                nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            const stateSelect = document.querySelector('select[name="state"]');
+            if (stateSelect) {
+                stateSelect.value = 'OR';
+                stateSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            const zipInput = document.querySelector('input[name="postal_code"]') || document.querySelector('input[name="address[postal_code]"]');
+            if (zipInput) {
+                zipInput.value = "97301";
+                zipInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        });
+
+        // 7. النقر على زر الدفع النهائي وتأكيد الاشتراك
+        await page.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll('button'));
+            const payBtn = buttons.find(el => el.innerText.includes('Subscribe') || el.innerText.includes('Pay') || el.innerText.includes('اشتراك'));
+            if (payBtn) payBtn.click();
+        });
+
         await new Promise(r => setTimeout(r, 5000));
-
-        const currentUrl = page.url();
-        const pageTitle = await page.title();
-
         await browser.close();
 
-        return res.status(400).json({ 
-            message: `عنوان الصفحة الحالي: ${currentUrl} | اسم الصفحة: ${pageTitle}` 
-        });
+        // ✅ تم التفعيل بنجاح: حرق الـ CDK لكي لا يُستعمل مرة أخرى
+        db.codes[cdk].status = 'used';
+        writeDB(db);
+
+        return res.status(200).json({ message: 'تمت ترقية الحساب إلى 3 مقاعد عبر رابط العرض وبطاقتك بنجاح!' });
 
     } catch (e) {
         console.error("AUTOMATION ERROR:", e);
         if (browser) {
             try { await browser.close(); } catch (err) {}
         }
-        return res.status(500).json({ message: 'خطأ تقني: ' + e.message });
+        return res.status(500).json({ message: 'خطأ تقني أثناء الأتمتة: ' + e.message });
     }
 });
 
