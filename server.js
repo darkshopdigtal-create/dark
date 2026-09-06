@@ -90,7 +90,7 @@ app.post('/api/verify-code', (req, res) => {
     res.status(200).json({ message: 'الكود صالح' });
 });
 
-// 🚀 الأتمتة الفاحصة الدقيقة لمنع الرسائل الوهمية وكشف السبب الحقيقي
+// 🚀 الأتمتة المتقدمة مع محاكاة المتصفح الأمريكي وكشف النص الحقيقي تماماً
 app.post('/api/activate-business', async (req, res) => {
     const { cdk, sessionData } = req.body;
     const db = readDB();
@@ -111,39 +111,59 @@ app.post('/api/activate-business', async (req, res) => {
         browser = await puppeteer.launch({
             headless: true,
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--lang=en-US,en' // فرض لغة المتصفح الأمريكية
+            ]
         });
 
         const page = await browser.newPage();
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        
+        // ضبط المنطقة الزمنية واللغة لتبدو أمريكية تماماً
+        await page.emulateTimezone('America/New_York');
+        await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
-        // 1. تسجيل الدخول
+        // 1. الدخول لموقع ChatGPT
         await page.goto('https://chatgpt.com', { waitUntil: 'networkidle2' });
+
         if (parsedSession.accessToken) {
             await page.evaluate((token) => {
                 localStorage.setItem('accessToken', token);
             }, parsedSession.accessToken);
         }
+
         await page.reload({ waitUntil: 'networkidle2' });
 
         // 2. الانتقال لصفحة الفوترة
         await page.goto('https://chatgpt.com/#settings/billing', { waitUntil: 'networkidle2' });
-        await new Promise(r => setTimeout(r, 5000));
+        await new Promise(r => setTimeout(r, 6000)); // انتظار أطول لتحميل العرض الأمريكي
 
-        // فحص ما إذا كان الحساب قد دخل بنجاح أم طُلب منه تسجيل الدخول (مثل Cloudflare أو Session منتهي)
-        const pageText = await page.evaluate(() => document.body.innerText);
+        const currentUrl = page.url();
         
-        if (pageText.includes('Log in') || pageText.includes('Sign up') || pageText.includes('Verify')) {
+        // سحب أجزاء من النص الظاهر على الشاشة ليريك بالضبط ما الذي يواجهه المتصفح
+        const bodySnippet = await page.evaluate(() => {
+            return document.body.innerText.substring(0, 400).replace(/\n/g, ' ');
+        });
+
+        // فحص إذا تم تحويله لتسجيل الدخول
+        if (currentUrl.includes('login') || bodySnippet.includes('Log in') || bodySnippet.includes('Sign up')) {
             await browser.close();
             return res.status(400).json({ 
-                message: 'فشل التفعيل: جلسة الزبون (Session) غير صالحة أو منتهية، والمتصفح أُعيد توجيهه لصفحة تسجيل الدخول.' 
+                message: `واجه المتصفح مشكلة تسجيل دخول: الرابط الحالي هو (${currentUrl}). والنص الظاهر على الصفحة هو: [${bodySnippet}]` 
             });
         }
 
         // 3. محاولة النقر على زر الترقية
         const clicked = await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll('button, a'));
-            const target = buttons.find(el => el.innerText.includes('Upgrade') || el.innerText.includes('ترقية') || el.innerText.includes('Team'));
+            const target = buttons.find(el => {
+                const text = el.innerText.toLowerCase();
+                return text.includes('upgrade') || text.includes('team') || text.includes('business');
+            });
             if (target) {
                 target.click();
                 return true;
@@ -154,25 +174,25 @@ app.post('/api/activate-business', async (req, res) => {
         if (!clicked) {
             await browser.close();
             return res.status(400).json({ 
-                message: 'فشل التفعيل: دخل المتصفح الحساب بنجاح، لكنه لم يجد زر "Upgrade" أو عرض الترقية الظاهر في الصفحة.' 
+                message: `لم يجد المتصفح زر الترقية! محتوى الصفحة الظاهر حالياً: [${bodySnippet}]` 
             });
         }
 
         await new Promise(r => setTimeout(r, 3000));
         await browser.close();
 
-        // ✅ إذا وصل إلى هنا يعني أنه وجد الزر وضغط عليه فعلياً
+        // ✅ نجاح العملية وحرق الكود
         db.codes[cdk].status = 'used';
         writeDB(db);
 
-        return res.status(200).json({ message: 'تم إيجاد زر الترقية والنقر عليه بنجاح وتفعيل الحساب!' });
+        return res.status(200).json({ message: 'تم النقر على زر الترقية بنجاح وتفعيل الحساب!' });
 
     } catch (e) {
         console.error("AUTOMATION ERROR:", e);
         if (browser) {
             try { await browser.close(); } catch (err) {}
         }
-        return res.status(500).json({ message: 'خطأ تقني أثناء الأتمتة: ' + e.message });
+        return res.status(500).json({ message: 'خطأ تقني: ' + e.message });
     }
 });
 
