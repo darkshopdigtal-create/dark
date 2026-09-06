@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم الأدمن - الأكواد والبطاقات</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #0b0f19; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .container { background-color: #1e293b; padding: 35px; border-radius: 16px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4); width: 100%; max-width: 550px; border: 1px solid #334155; }
+        h2, h3 { text-align: center; margin-bottom: 15px; color: #38bdf8; }
+        .form-group { margin-bottom: 12px; }
+        label { display: block; margin-bottom: 4px; font-size: 12px; color: #94a3b8; }
+        input { width: 100%; padding: 10px 12px; background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; color: white; font-size: 13px; outline: none; }
+        input:focus { border-color: #38bdf8; }
+        button { width: 100%; padding: 12px; background-color: #0284c7; border: none; border-radius: 10px; color: white; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        button:hover { background-color: #0369a1; }
+        .btn-green { background-color: #16a34a; } .btn-green:hover { background-color: #15803d; }
+        #admin-panel { display: none; margin-top: 10px; }
+        .success-msg { color: #4ade80; font-size: 13px; text-align: center; margin-top: 8px; }
+        .error-msg { color: #f87171; font-size: 13px; text-align: center; margin-top: 8px; }
+        ul { list-style: none; margin-top: 10px; max-height: 120px; overflow-y: auto; }
+        li { background: #0f172a; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; display: flex; justify-content: space-between; font-size: 13px; }
+        .active-status { color: #4ade80; } .used-status { color: #f87171; }
+        .divider { border: 0; height: 1px; background: #334155; margin: 20px 0; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- تسجيل الدخول -->
+        <div id="login-section">
+            <h2>تسجيل دخول الأدمن</h2>
+            <div class="form-group">
+                <label for="admin-pass">كلمة المرور السرية</label>
+                <input type="password" id="admin-pass" placeholder="أدخل كلمة المرور...">
+            </div>
+            <button onclick="loginAdmin()">دخول اللوحة</button>
+            <div id="login-error" class="error-msg"></div>
+        </div>
+
+        <!-- لوحة التحكم -->
+        <div id="admin-panel">
+            <h2>لوحة إدارة المتجر</h2>
+            
+            <!-- قسم الأكواد -->
+            <button onclick="generateNewCode()">+ توليد كود تفعيل جديد (CDK)</button>
+            <div id="gen-result"></div>
+            <h3 style="margin-top: 15px; font-size: 14px; text-align: right; color: #94a3b8;">قائمة الأكواد:</h3>
+            <ul id="codes-list"></ul>
+
+            <hr class="divider">
+
+            <!-- قسم إدارة البطاقات البنكية -->
+            <h3>إدارة البطاقات المخزنة</h3>
+            <div class="form-group">
+                <label>رقم البطاقة (Card Number)</label>
+                <input type="text" id="card-num" placeholder="xxxx xxxx xxxx xxxx">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <div class="form-group" style="flex: 1;">
+                    <label>تاريخ الانتهاء (MM/YY)</label>
+                    <input type="text" id="card-exp" placeholder="MM/YY">
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label>رمز الأمان (CVV)</label>
+                    <input type="password" id="card-cvv" placeholder="123">
+                </div>
+            </div>
+            <button class="btn-green" onclick="saveCard()">حفظ وإضافة البطاقة للسيرفر</button>
+            <div id="card-result"></div>
+
+            <h3 style="margin-top: 15px; font-size: 14px; text-align: right; color: #94a3b8;">البطاقات المتاحة حالياً:</h3>
+            <ul id="cards-list"></ul>
+        </div>
+    </div>
+
+    <script>
+        let adminToken = "";
+
+        async function loginAdmin() {
+            const password = document.getElementById('admin-pass').value;
+            const errorDiv = document.getElementById('login-error');
+
+            try {
+                const res = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    adminToken = data.token;
+                    document.getElementById('login-section').style.display = 'none';
+                    document.getElementById('admin-panel').style.display = 'block';
+                    loadData();
+                } else {
+                    errorDiv.innerText = data.message || 'كلمة المرور غير صحيحة';
+                }
+            } catch (e) {
+                errorDiv.innerText = 'خطأ في الاتصال بالسيرفر';
+            }
+        }
+
+        async function loadData() {
+            try {
+                const res = await fetch('/api/admin/data', {
+                    headers: { 'Authorization': adminToken }
+                });
+                const data = await res.json();
+                
+                // عرض الأكواد
+                const codesList = document.getElementById('codes-list');
+                codesList.innerHTML = '';
+                for (let [code, info] of Object.entries(data.codes)) {
+                    const li = document.createElement('li');
+                    const statusText = info.status === 'active' ? 'صالح' : 'مستخدم';
+                    const statusClass = info.status === 'active' ? 'active-status' : 'used-status';
+                    li.innerHTML = `<span>${code}</span> <span class="${statusClass}">${statusText}</span>`;
+                    codesList.appendChild(li);
+                }
+
+                // عرض البطاقات (مخفية الأجزاء للحماية)
+                const cardsList = document.getElementById('cards-list');
+                cardsList.innerHTML = '';
+                data.cards.forEach((card, index) => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<span>بطاقة رقم #${index + 1} (${card.number.slice(-4)})</span> <span style="color:#4ade80;">نشطة</span>`;
+                    cardsList.appendChild(li);
+                });
+            } catch (e) {
+                console.error('فشل جلب البيانات');
+            }
+        }
+
+        async function generateNewCode() {
+            try {
+                const res = await fetch('/api/admin/generate', {
+                    method: 'POST',
+                    headers: { 'Authorization': adminToken }
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById('gen-result').innerHTML = `<div class="success-msg">تم التوليد: <b>${data.newCode}</b></div>`;
+                    loadData();
+                }
+            } catch (e) { alert('فشل التوليد'); }
+        }
+
+        async function saveCard() {
+            const number = document.getElementById('card-num').value.trim();
+            const expiry = document.getElementById('card-exp').value.trim();
+            const cvv = document.getElementById('card-cvv').value.trim();
+            const resultDiv = document.getElementById('card-result');
+
+            if (!number || !expiry || !cvv) {
+                resultDiv.innerHTML = `<div class="error-msg">الرجاء إبقاء الحقول مكتملة</div>`;
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/admin/add-card', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': adminToken },
+                    body: JSON.stringify({ number, expiry, cvv })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    resultDiv.innerHTML = `<div class="success-msg">تم حفظ البطاقة بنجاح في السيرفر الآمن</div>`;
+                    document.getElementById('card-num').value = '';
+                    document.getElementById('card-exp').value = '';
+                    document.getElementById('card-cvv').value = '';
+                    loadData();
+                } else {
+                    resultDiv.innerHTML = `<div class="error-msg">${data.message}</div>`;
+                }
+            } catch (e) { alert('فشل حفظ البطاقة'); }
+        }
+    </script>
+</body>
+</html>
