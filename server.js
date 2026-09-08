@@ -12,7 +12,7 @@ app.use(express.static(__dirname));
 
 const DB_FILE = path.join(__dirname, 'database.json');
 
-// بطاقتك مثبتة بشكل دائم هنا
+// 💡 بطاقتك مثبتة هنا كقاعدة أساسية جاهزة للدفع
 const MY_CARD = {
     number: "5556597906083383",
     expiry: "0928",
@@ -38,6 +38,9 @@ function writeDB(data) {
     } catch (e) {}
 }
 
+const ADMIN_PASSWORD = "FOAD_SECRET_ADMIN_2026";
+const ADMIN_TOKEN = "Bearer-Secret-Token-123456";
+
 app.post('/api/verify-code', (req, res) => {
     const { cdk } = req.body;
     const db = readDB();
@@ -46,7 +49,7 @@ app.post('/api/verify-code', (req, res) => {
     res.status(200).json({ message: 'الكود صالح' });
 });
 
-// مسار الأتمتة النهائي
+// 🚀 مسار الأتمتة النهائي (طريقة الحقن الداخلي الذكية)
 app.post('/api/activate-business', async (req, res) => {
     const { cdk, sessionData } = req.body;
     const db = readDB();
@@ -58,14 +61,13 @@ app.post('/api/activate-business', async (req, res) => {
     let sessionTokenRaw = null;
     let accessTokenRaw = null;
 
-    // استخراج الجلسة بأمان
+    // استخراج الجلسة
     try {
         let parsed = JSON.parse(sessionData);
         if (parsed.rawData) parsed = JSON.parse(parsed.rawData);
         sessionTokenRaw = parsed.sessionToken;
         accessTokenRaw = parsed.accessToken;
     } catch (err) {
-        // محاولة الاستخراج عبر Regex إذا فشل الـ JSON
         const sessionMatch = sessionData.match(/"sessionToken"\s*:\s*"([^"]+)"/);
         const accessMatch = sessionData.match(/"accessToken"\s*:\s*"([^"]+)"/);
         if (sessionMatch) sessionTokenRaw = sessionMatch[1];
@@ -76,8 +78,7 @@ app.post('/api/activate-business', async (req, res) => {
         return res.status(400).json({ message: 'البيانات ناقصة. تأكد من لصق الجلسة بالكامل.' });
     }
 
-    // 🔥 التنظيف العنيف: السماح فقط بالحروف، الأرقام، النقطة، الشارحة، والشرطة السفلية
-    // هذا يضمن مسح أي مسافات مخفية أو نزول سطر يسبب خطأ "Invalid cookie fields"
+    // تنظيف خام للتوكن
     const cleanSessionToken = String(sessionTokenRaw).replace(/[^a-zA-Z0-9\-_.]/g, '');
     const cleanAccessToken = String(accessTokenRaw).replace(/[^a-zA-Z0-9\-_.]/g, '');
 
@@ -102,42 +103,31 @@ app.post('/api/activate-business', async (req, res) => {
         await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
-        // 1. التوجه للموقع
+        // 1. الدخول السريع للموقع (صفحة خفيفة لتهيئة الدومين)
         await page.goto('https://chatgpt.com', { waitUntil: 'domcontentloaded' });
 
-        // 2. حقن الكوكيز النظيف
-        try {
-            await page.setCookie({
-                name: '__Secure-next-auth.session-token',
-                value: cleanSessionToken,
-                domain: '.chatgpt.com',
-                path: '/',
-                secure: true,
-                httpOnly: true
-            });
-        } catch (cookieErr) {
-            await browser.close();
-            return res.status(500).json({ message: 'خطأ أثناء حقن الكوكي: ' + cookieErr.message });
-        }
+        // 🔥 2. الحل الجذري: حقن الكوكي من "داخل" المتصفح بواسطة جافاسكربت
+        await page.evaluate((sessionToken, accessToken) => {
+            // زرع الكوكي الأساسي يدوياً داخل الصفحة
+            document.cookie = `__Secure-next-auth.session-token=${sessionToken}; path=/; domain=.chatgpt.com; Secure; SameSite=Lax`;
+            
+            // زرع التوكن الفرعي
+            localStorage.setItem('accessToken', accessToken);
+        }, cleanSessionToken, cleanAccessToken);
 
-        // حقن AccessToken
-        await page.evaluate((token) => {
-            localStorage.setItem('accessToken', token);
-        }, cleanAccessToken);
-
-        // 3. التوجه لصفحة الفوترة
+        // 3. التوجه لصفحة الفوترة بعد الحقن الداخلي
         await page.goto('https://chatgpt.com/#settings/billing', { waitUntil: 'networkidle2' });
-        await new Promise(r => setTimeout(r, 5000));
+        await new Promise(r => setTimeout(r, 6000)); // ننتظر التحميل قليلاً
 
         const currentUrl = page.url();
         const bodySnippet = await page.evaluate(() => document.body.innerText.substring(0, 300));
 
         if (currentUrl.includes('login') || bodySnippet.includes('Log in')) {
             await browser.close();
-            return res.status(400).json({ message: 'تم حقن الكوكي ولكن الموقع رفضه (ربما الجلسة منتهية أو مسجل خروج).' });
+            return res.status(400).json({ message: 'الموقع طلب تسجيل دخول! يبدو أن الجلسة منتهية أو تم تسجيل الخروج منها.' });
         }
 
-        // 4. النقر على الترقية
+        // 4. النقر على زر الترقية
         const clickedUpgrade = await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll('button, a'));
             const target = buttons.find(el => {
@@ -153,7 +143,7 @@ app.post('/api/activate-business', async (req, res) => {
 
         if (!clickedUpgrade) {
             await browser.close();
-            return res.status(400).json({ message: 'لم يتم العثور على زر الترقية.' });
+            return res.status(400).json({ message: 'لم يتم العثور على زر الترقية في صفحة الزبون.' });
         }
 
         await new Promise(r => setTimeout(r, 4000));
@@ -171,7 +161,7 @@ app.post('/api/activate-business', async (req, res) => {
 
         await new Promise(r => setTimeout(r, 2000));
 
-        // 6. حقن البطاقة (المثبتة)
+        // 6. حقن البطاقة المثبتة
         const frames = page.frames();
         for (const frame of frames) {
             try {
@@ -185,7 +175,7 @@ app.post('/api/activate-business', async (req, res) => {
             } catch (err) {}
         }
 
-        // 7. إدخال العنوان واسم الولاية (Oregon)
+        // 7. إدخال العنوان (Oregon) لتجنب الضريبة
         await page.evaluate(() => {
             const nameInput = document.querySelector('input[name="name"]');
             if (nameInput) {
@@ -204,7 +194,7 @@ app.post('/api/activate-business', async (req, res) => {
             }
         });
 
-        // 8. الدفع
+        // 8. الدفع النهائي
         await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll('button'));
             const payBtn = buttons.find(el => el.innerText.includes('Subscribe') || el.innerText.includes('Pay'));
