@@ -12,7 +12,7 @@ app.use(express.static(__dirname));
 
 const DB_FILE = path.join(__dirname, 'database.json');
 
-// 💡 بطاقتك مثبتة هنا كقاعدة أساسية جاهزة للدفع
+// بطاقتك مثبتة بشكل دائم وجاهزة
 const MY_CARD = {
     number: "5556597906083383",
     expiry: "0928",
@@ -49,7 +49,7 @@ app.post('/api/verify-code', (req, res) => {
     res.status(200).json({ message: 'الكود صالح' });
 });
 
-// 🚀 مسار الأتمتة النهائي (طريقة الحقن الداخلي الذكية)
+// 🚀 مسار الأتمتة النهائي
 app.post('/api/activate-business', async (req, res) => {
     const { cdk, sessionData } = req.body;
     const db = readDB();
@@ -61,7 +61,6 @@ app.post('/api/activate-business', async (req, res) => {
     let sessionTokenRaw = null;
     let accessTokenRaw = null;
 
-    // استخراج الجلسة
     try {
         let parsed = JSON.parse(sessionData);
         if (parsed.rawData) parsed = JSON.parse(parsed.rawData);
@@ -78,7 +77,6 @@ app.post('/api/activate-business', async (req, res) => {
         return res.status(400).json({ message: 'البيانات ناقصة. تأكد من لصق الجلسة بالكامل.' });
     }
 
-    // تنظيف خام للتوكن
     const cleanSessionToken = String(sessionTokenRaw).replace(/[^a-zA-Z0-9\-_.]/g, '');
     const cleanAccessToken = String(accessTokenRaw).replace(/[^a-zA-Z0-9\-_.]/g, '');
 
@@ -103,47 +101,49 @@ app.post('/api/activate-business', async (req, res) => {
         await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
-        // 1. الدخول السريع للموقع (صفحة خفيفة لتهيئة الدومين)
+        // 1. التوجه للموقع
         await page.goto('https://chatgpt.com', { waitUntil: 'domcontentloaded' });
 
-        // 🔥 2. الحل الجذري: حقن الكوكي من "داخل" المتصفح بواسطة جافاسكربت
+        // 2. حقن الكوكيز الناجح!
         await page.evaluate((sessionToken, accessToken) => {
-            // زرع الكوكي الأساسي يدوياً داخل الصفحة
             document.cookie = `__Secure-next-auth.session-token=${sessionToken}; path=/; domain=.chatgpt.com; Secure; SameSite=Lax`;
-            
-            // زرع التوكن الفرعي
             localStorage.setItem('accessToken', accessToken);
         }, cleanSessionToken, cleanAccessToken);
 
-        // 3. التوجه لصفحة الفوترة بعد الحقن الداخلي
+        // 3. التوجه لصفحة الفوترة
         await page.goto('https://chatgpt.com/#settings/billing', { waitUntil: 'networkidle2' });
-        await new Promise(r => setTimeout(r, 6000)); // ننتظر التحميل قليلاً
-
+        
+        // التحقق من أننا داخل الحساب فعلاً
         const currentUrl = page.url();
         const bodySnippet = await page.evaluate(() => document.body.innerText.substring(0, 300));
-
         if (currentUrl.includes('login') || bodySnippet.includes('Log in')) {
             await browser.close();
             return res.status(400).json({ message: 'الموقع طلب تسجيل دخول! يبدو أن الجلسة منتهية أو تم تسجيل الخروج منها.' });
         }
 
-        // 4. النقر على زر الترقية
-        const clickedUpgrade = await page.evaluate(() => {
-            const buttons = Array.from(document.querySelectorAll('button, a'));
-            const target = buttons.find(el => {
-                const text = el.innerText.toLowerCase();
-                return text.includes('upgrade') || text.includes('team') || text.includes('business');
-            });
-            if (target) {
-                target.click();
-                return true;
+        // 🔥 4. الباحث الذكي: ينتظر زر الترقية لمدة 15 ثانية حتى يظهر
+        const clickedUpgrade = await page.evaluate(async () => {
+            const sleep = ms => new Promise(r => setTimeout(r, ms));
+            for (let i = 0; i < 15; i++) { // 15 محاولة (15 ثانية)
+                const elements = Array.from(document.querySelectorAll('button, a, div[role="button"]'));
+                const target = elements.find(el => {
+                    const text = (el.innerText || '').toLowerCase().trim();
+                    return text === 'upgrade' || text === 'upgrade plan' || text.includes('team') || text.includes('business');
+                });
+                if (target) {
+                    target.click();
+                    return true;
+                }
+                await sleep(1000);
             }
             return false;
         });
 
+        // إذا بعد 15 ثانية ما لگاه، يقرأ الشاشة حتى نعرف شنو الأزرار المتاحة
         if (!clickedUpgrade) {
+            const screenText = await page.evaluate(() => document.body.innerText.replace(/\n/g, ' ').substring(0, 400));
             await browser.close();
-            return res.status(400).json({ message: 'لم يتم العثور على زر الترقية في صفحة الزبون.' });
+            return res.status(400).json({ message: `نجح الدخول للحساب وتخطي تسجيل الدخول! لكن لم يجد زر Upgrade. الشاشة حالياً تقرأ: [${screenText}]` });
         }
 
         await new Promise(r => setTimeout(r, 4000));
@@ -159,9 +159,9 @@ app.post('/api/activate-business', async (req, res) => {
             }
         });
 
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 3000));
 
-        // 6. حقن البطاقة المثبتة
+        // 6. إدخال البطاقة
         const frames = page.frames();
         for (const frame of frames) {
             try {
@@ -175,7 +175,7 @@ app.post('/api/activate-business', async (req, res) => {
             } catch (err) {}
         }
 
-        // 7. إدخال العنوان (Oregon) لتجنب الضريبة
+        // 7. إدخال العنوان واسم الولاية (Oregon)
         await page.evaluate(() => {
             const nameInput = document.querySelector('input[name="name"]');
             if (nameInput) {
@@ -194,14 +194,14 @@ app.post('/api/activate-business', async (req, res) => {
             }
         });
 
-        // 8. الدفع النهائي
+        // 8. الدفع
         await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll('button'));
             const payBtn = buttons.find(el => el.innerText.includes('Subscribe') || el.innerText.includes('Pay'));
             if (payBtn) payBtn.click();
         });
 
-        await new Promise(r => setTimeout(r, 6000));
+        await new Promise(r => setTimeout(r, 8000));
         await browser.close();
 
         // حرق الكود بعد النجاح
