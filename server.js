@@ -12,68 +12,31 @@ app.use(express.static(__dirname));
 
 const DB_FILE = path.join(__dirname, 'database.json');
 
-// 💡 بطاقتك مثبتة هنا وجاهزة دائماً
-const INITIAL_DB_STATE = {
-    codes: { "GHOST-1234": { status: "active" }, "VIP-9999": { status: "active" } },
-    cards: [
-        {
-            number: "5556597906083383",
-            expiry: "0928",
-            cvv: "075"
-        }
-    ]
+// بطاقتك مثبتة بشكل دائم هنا
+const MY_CARD = {
+    number: "5556597906083383",
+    expiry: "0928",
+    cvv: "075"
 };
 
 function readDB() {
     try {
         if (!fs.existsSync(DB_FILE)) {
-            fs.writeFileSync(DB_FILE, JSON.stringify(INITIAL_DB_STATE, null, 2), 'utf8');
-            return INITIAL_DB_STATE;
+            const initialData = { codes: { "GHOST-1234": { status: "active" } } };
+            fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), 'utf8');
+            return initialData;
         }
-        const data = fs.readFileSync(DB_FILE, 'utf8');
-        return JSON.parse(data);
+        return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
     } catch (e) {
-        fs.writeFileSync(DB_FILE, JSON.stringify(INITIAL_DB_STATE, null, 2), 'utf8');
-        return INITIAL_DB_STATE;
+        return { codes: { "GHOST-1234": { status: "active" } } };
     }
 }
 
 function writeDB(data) {
     try {
         fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
-    } catch (e) {
-        console.error("DB Write Error:", e);
-    }
+    } catch (e) {}
 }
-
-const ADMIN_PASSWORD = "FOAD_SECRET_ADMIN_2026";
-const ADMIN_TOKEN = "Bearer-Secret-Token-123456";
-
-app.post('/api/admin/login', (req, res) => {
-    const { password } = req.body;
-    if (password === ADMIN_PASSWORD) {
-        return res.status(200).json({ token: ADMIN_TOKEN });
-    }
-    res.status(401).json({ message: 'كلمة المرور خاطئة!' });
-});
-
-app.get('/api/admin/data', (req, res) => {
-    const auth = req.headers['authorization'];
-    if (auth !== ADMIN_TOKEN) return res.status(403).json({ message: 'غير مسموح' });
-    const db = readDB();
-    res.status(200).json({ codes: db.codes, cards: db.cards.map(c => ({ number: c.number })) });
-});
-
-app.post('/api/admin/generate', (req, res) => {
-    const auth = req.headers['authorization'];
-    if (auth !== ADMIN_TOKEN) return res.status(403).json({ message: 'غير مسموح' });
-    const db = readDB();
-    const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const newCode = `GHOST-${randomPart}`;
-    db.codes[newCode] = { status: "active" };
-    writeDB(db);
-    res.status(200).json({ message: 'تم التوليد بنجاح', newCode });
-});
 
 app.post('/api/verify-code', (req, res) => {
     const { cdk } = req.body;
@@ -83,36 +46,40 @@ app.post('/api/verify-code', (req, res) => {
     res.status(200).json({ message: 'الكود صالح' });
 });
 
-// 🚀 الأتمتة الكاملة مع تجاوز خطأ الكوكيز
+// مسار الأتمتة النهائي
 app.post('/api/activate-business', async (req, res) => {
     const { cdk, sessionData } = req.body;
     const db = readDB();
-    
-    if (db.cards.length === 0) return res.status(400).json({ message: 'لا توجد بطاقات مسجلة.' });
-    if (!db.codes[cdk] || db.codes[cdk].status === 'used') return res.status(400).json({ message: 'الكود غير صالح أو مستخدم مسبقاً' });
 
-    let sessionToken = null;
-    let accessToken = null;
+    if (!db.codes[cdk] || db.codes[cdk].status === 'used') {
+        return res.status(400).json({ message: 'الكود غير صالح أو مستخدم مسبقاً' });
+    }
 
+    let sessionTokenRaw = null;
+    let accessTokenRaw = null;
+
+    // استخراج الجلسة بأمان
     try {
         let parsed = JSON.parse(sessionData);
-        if (typeof parsed === 'string') parsed = JSON.parse(parsed);
         if (parsed.rawData) parsed = JSON.parse(parsed.rawData);
-        
-        sessionToken = parsed.sessionToken;
-        accessToken = parsed.accessToken;
+        sessionTokenRaw = parsed.sessionToken;
+        accessTokenRaw = parsed.accessToken;
     } catch (err) {
-        return res.status(400).json({ message: 'فشل في قراءة بيانات الجلسة. تأكد من صحة النسخ.' });
+        // محاولة الاستخراج عبر Regex إذا فشل الـ JSON
+        const sessionMatch = sessionData.match(/"sessionToken"\s*:\s*"([^"]+)"/);
+        const accessMatch = sessionData.match(/"accessToken"\s*:\s*"([^"]+)"/);
+        if (sessionMatch) sessionTokenRaw = sessionMatch[1];
+        if (accessMatch) accessTokenRaw = accessMatch[1];
     }
 
-    if (!sessionToken || !accessToken) {
-        return res.status(400).json({ message: 'البيانات ناقصة (لا يوجد sessionToken أو accessToken).' });
+    if (!sessionTokenRaw || !accessTokenRaw) {
+        return res.status(400).json({ message: 'البيانات ناقصة. تأكد من لصق الجلسة بالكامل.' });
     }
 
-    // تنظيف الفراغات المسببة للخطأ
-    const cleanSessionToken = String(sessionToken).replace(/[\r\n\t]/g, '').trim();
-    const cleanAccessToken = String(accessToken).replace(/[\r\n\t]/g, '').trim();
-    const cardToUse = db.cards[0];
+    // 🔥 التنظيف العنيف: السماح فقط بالحروف، الأرقام، النقطة، الشارحة، والشرطة السفلية
+    // هذا يضمن مسح أي مسافات مخفية أو نزول سطر يسبب خطأ "Invalid cookie fields"
+    const cleanSessionToken = String(sessionTokenRaw).replace(/[^a-zA-Z0-9\-_.]/g, '');
+    const cleanAccessToken = String(accessTokenRaw).replace(/[^a-zA-Z0-9\-_.]/g, '');
 
     let browser;
     try {
@@ -130,39 +97,47 @@ app.post('/api/activate-business', async (req, res) => {
 
         const page = await browser.newPage();
         page.setDefaultNavigationTimeout(60000);
+
         await page.emulateTimezone('America/New_York');
         await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
+        // 1. التوجه للموقع
         await page.goto('https://chatgpt.com', { waitUntil: 'domcontentloaded' });
 
-        // 💡 الحل الجذري للخطأ: استخدام url بدلاً من domain لقبول الكوكي فوراً
-        await page.setCookie({
-            name: '__Secure-next-auth.session-token',
-            value: cleanSessionToken,
-            url: 'https://chatgpt.com', 
-            path: '/',
-            secure: true,
-            httpOnly: true
-        });
+        // 2. حقن الكوكيز النظيف
+        try {
+            await page.setCookie({
+                name: '__Secure-next-auth.session-token',
+                value: cleanSessionToken,
+                domain: '.chatgpt.com',
+                path: '/',
+                secure: true,
+                httpOnly: true
+            });
+        } catch (cookieErr) {
+            await browser.close();
+            return res.status(500).json({ message: 'خطأ أثناء حقن الكوكي: ' + cookieErr.message });
+        }
 
+        // حقن AccessToken
         await page.evaluate((token) => {
             localStorage.setItem('accessToken', token);
         }, cleanAccessToken);
 
-        // التوجه لصفحة الفوترة مباشرة
+        // 3. التوجه لصفحة الفوترة
         await page.goto('https://chatgpt.com/#settings/billing', { waitUntil: 'networkidle2' });
-        await new Promise(r => setTimeout(r, 6000));
+        await new Promise(r => setTimeout(r, 5000));
 
         const currentUrl = page.url();
         const bodySnippet = await page.evaluate(() => document.body.innerText.substring(0, 300));
 
         if (currentUrl.includes('login') || bodySnippet.includes('Log in')) {
             await browser.close();
-            return res.status(400).json({ message: 'فشل تخطي تسجيل الدخول. الجلسة المنسوخة منتهية الصلاحية.' });
+            return res.status(400).json({ message: 'تم حقن الكوكي ولكن الموقع رفضه (ربما الجلسة منتهية أو مسجل خروج).' });
         }
 
-        // النقر على الترقية
+        // 4. النقر على الترقية
         const clickedUpgrade = await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll('button, a'));
             const target = buttons.find(el => {
@@ -178,12 +153,12 @@ app.post('/api/activate-business', async (req, res) => {
 
         if (!clickedUpgrade) {
             await browser.close();
-            return res.status(400).json({ message: 'لم يتم العثور على زر الترقية في حساب الزبون.' });
+            return res.status(400).json({ message: 'لم يتم العثور على زر الترقية.' });
         }
 
         await new Promise(r => setTimeout(r, 4000));
 
-        // تعديل المقاعد إلى 3
+        // 5. تعديل المقاعد إلى 3
         await page.evaluate(() => {
             const inputs = Array.from(document.querySelectorAll('input'));
             const seatsInput = inputs.find(input => input.value == '5' || input.type === 'number');
@@ -196,21 +171,21 @@ app.post('/api/activate-business', async (req, res) => {
 
         await new Promise(r => setTimeout(r, 2000));
 
-        // تعبئة بطاقتك المثبتة
+        // 6. حقن البطاقة (المثبتة)
         const frames = page.frames();
         for (const frame of frames) {
             try {
                 const cardInput = await frame.$('input[name="cardnumber"]');
                 if (cardInput) {
-                    await frame.type('input[name="cardnumber"]', cardToUse.number, { delay: 30 });
-                    await frame.type('input[name="exp-date"]', cardToUse.expiry, { delay: 30 });
-                    await frame.type('input[name="cvc"]', cardToUse.cvv, { delay: 30 });
+                    await frame.type('input[name="cardnumber"]', MY_CARD.number, { delay: 30 });
+                    await frame.type('input[name="exp-date"]', MY_CARD.expiry, { delay: 30 });
+                    await frame.type('input[name="cvc"]', MY_CARD.cvv, { delay: 30 });
                     break;
                 }
             } catch (err) {}
         }
 
-        // إدخال اسم وعنوان ولاية بدون ضريبة (أوريغون)
+        // 7. إدخال العنوان واسم الولاية (Oregon)
         await page.evaluate(() => {
             const nameInput = document.querySelector('input[name="name"]');
             if (nameInput) {
@@ -229,7 +204,7 @@ app.post('/api/activate-business', async (req, res) => {
             }
         });
 
-        // النقر على دفع
+        // 8. الدفع
         await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll('button'));
             const payBtn = buttons.find(el => el.innerText.includes('Subscribe') || el.innerText.includes('Pay'));
@@ -239,10 +214,11 @@ app.post('/api/activate-business', async (req, res) => {
         await new Promise(r => setTimeout(r, 6000));
         await browser.close();
 
+        // حرق الكود بعد النجاح
         db.codes[cdk].status = 'used';
         writeDB(db);
 
-        return res.status(200).json({ message: 'تم التفعيل بنجاح! تم الدخول وتطبيق الـ 3 مقاعد واستخدام البطاقة.' });
+        return res.status(200).json({ message: 'تم التفعيل بنجاح! تم الدخول وتطبيق الـ 3 مقاعد واستخدام البطاقة المثبتة.' });
 
     } catch (e) {
         console.error("AUTOMATION ERROR:", e);
