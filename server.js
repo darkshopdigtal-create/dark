@@ -12,7 +12,7 @@ app.use(express.static(__dirname));
 
 const DB_FILE = path.join(__dirname, 'database.json');
 
-// 💡 بطاقتك مثبتة هنا كقاعدة أساسية جاهزة للدفع أوتوماتيكياً
+// 💡 بطاقتك مثبتة هنا وجاهزة دائماً
 const INITIAL_DB_STATE = {
     codes: { "GHOST-1234": { status: "active" }, "VIP-9999": { status: "active" } },
     cards: [
@@ -75,17 +75,6 @@ app.post('/api/admin/generate', (req, res) => {
     res.status(200).json({ message: 'تم التوليد بنجاح', newCode });
 });
 
-app.post('/api/admin/add-card', (req, res) => {
-    const auth = req.headers['authorization'];
-    if (auth !== ADMIN_TOKEN) return res.status(403).json({ message: 'غير مسموح' });
-    const { number, expiry, cvv } = req.body;
-    if (!number || !expiry || !cvv) return res.status(400).json({ message: 'جميع الحقول مطلوبة' });
-    const db = readDB();
-    db.cards.push({ number, expiry, cvv });
-    writeDB(db);
-    res.status(200).json({ message: 'تم الحفظ' });
-});
-
 app.post('/api/verify-code', (req, res) => {
     const { cdk } = req.body;
     const db = readDB();
@@ -94,56 +83,38 @@ app.post('/api/verify-code', (req, res) => {
     res.status(200).json({ message: 'الكود صالح' });
 });
 
-// 🚀 مسار الأتمتة النهائي مع تنظيف قوي للكوكيز
+// 🚀 الأتمتة الكاملة مع تجاوز خطأ الكوكيز
 app.post('/api/activate-business', async (req, res) => {
     const { cdk, sessionData } = req.body;
     const db = readDB();
     
-    if (db.cards.length === 0) {
-        return res.status(400).json({ message: 'لا توجد بطاقات مسجلة.' });
-    }
-
-    if (!db.codes[cdk] || db.codes[cdk].status === 'used') {
-        return res.status(400).json({ message: 'الكود غير صالح أو مستخدم مسبقاً' });
-    }
+    if (db.cards.length === 0) return res.status(400).json({ message: 'لا توجد بطاقات مسجلة.' });
+    if (!db.codes[cdk] || db.codes[cdk].status === 'used') return res.status(400).json({ message: 'الكود غير صالح أو مستخدم مسبقاً' });
 
     let sessionToken = null;
     let accessToken = null;
 
-    // محاولة استخراج التوكن بطريقتين لضمان عدم الفشل
     try {
         let parsed = JSON.parse(sessionData);
+        if (typeof parsed === 'string') parsed = JSON.parse(parsed);
         if (parsed.rawData) parsed = JSON.parse(parsed.rawData);
+        
         sessionToken = parsed.sessionToken;
         accessToken = parsed.accessToken;
     } catch (err) {
-        const sessionMatch = sessionData.match(/"sessionToken"\s*:\s*"([^"]+)"/);
-        const accessMatch = sessionData.match(/"accessToken"\s*:\s*"([^"]+)"/);
-        if (sessionMatch) sessionToken = sessionMatch[1];
-        if (accessMatch) accessToken = accessMatch[1];
+        return res.status(400).json({ message: 'فشل في قراءة بيانات الجلسة. تأكد من صحة النسخ.' });
     }
 
     if (!sessionToken || !accessToken) {
-        return res.status(400).json({ message: 'البيانات ناقصة. تأكد من لصق الجلسة بالكامل.' });
+        return res.status(400).json({ message: 'البيانات ناقصة (لا يوجد sessionToken أو accessToken).' });
     }
 
-    // 🧹 التنظيف العنيف: إزالة أي مسافات، نزول سطر، أو علامات اقتباس من التوكنات
-    const cleanSessionToken = String(sessionToken).replace(/[\r\n\s"']/g, '').trim();
-    const cleanAccessToken = String(accessToken).replace(/[\r\n\s"']/g, '').trim();
-
-    // 🔍 طباعة معلومات آمنة في الكونسول (Render Logs) لمعرفة حالة التوكن قبل حقنه
-    console.log("--- Token Safety Check ---");
-    console.log({
-        sessionTokenType: typeof cleanSessionToken,
-        sessionTokenLength: cleanSessionToken.length,
-        hasNewline: /[\r\n]/.test(cleanSessionToken),
-        hasSpaces: /\s/.test(cleanSessionToken)
-    });
-    console.log("--------------------------");
-
+    // تنظيف الفراغات المسببة للخطأ
+    const cleanSessionToken = String(sessionToken).replace(/[\r\n\t]/g, '').trim();
+    const cleanAccessToken = String(accessToken).replace(/[\r\n\t]/g, '').trim();
     const cardToUse = db.cards[0];
-    let browser;
 
+    let browser;
     try {
         browser = await puppeteer.launch({
             headless: true,
@@ -159,42 +130,39 @@ app.post('/api/activate-business', async (req, res) => {
 
         const page = await browser.newPage();
         page.setDefaultNavigationTimeout(60000);
-
         await page.emulateTimezone('America/New_York');
         await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
-        // 1. الانتقال للموقع لتهيئة الدومين
         await page.goto('https://chatgpt.com', { waitUntil: 'domcontentloaded' });
 
-        // 2. حقن الكوكيز الآن بعد التنظيف الصارم
+        // 💡 الحل الجذري للخطأ: استخدام url بدلاً من domain لقبول الكوكي فوراً
         await page.setCookie({
             name: '__Secure-next-auth.session-token',
             value: cleanSessionToken,
-            domain: '.chatgpt.com', // يفضل وضع النقطة قبل الدومين لضمان الشمولية
+            url: 'https://chatgpt.com', 
             path: '/',
             secure: true,
-            httpOnly: true,
-            sameSite: 'Lax'
+            httpOnly: true
         });
 
         await page.evaluate((token) => {
             localStorage.setItem('accessToken', token);
         }, cleanAccessToken);
 
-        // 3. الانتقال لصفحة الفوترة وتخطي تسجيل الدخول
+        // التوجه لصفحة الفوترة مباشرة
         await page.goto('https://chatgpt.com/#settings/billing', { waitUntil: 'networkidle2' });
         await new Promise(r => setTimeout(r, 6000));
 
         const currentUrl = page.url();
-        const bodySnippet = await page.evaluate(() => document.body.innerText.substring(0, 300).replace(/\n/g, ' '));
+        const bodySnippet = await page.evaluate(() => document.body.innerText.substring(0, 300));
 
         if (currentUrl.includes('login') || bodySnippet.includes('Log in')) {
             await browser.close();
-            return res.status(400).json({ message: 'فشل تخطي تسجيل الدخول. تأكد أن الجلسة ما زالت فعالة غير مسجلة خروج.' });
+            return res.status(400).json({ message: 'فشل تخطي تسجيل الدخول. الجلسة المنسوخة منتهية الصلاحية.' });
         }
 
-        // 4. النقر على الترقية
+        // النقر على الترقية
         const clickedUpgrade = await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll('button, a'));
             const target = buttons.find(el => {
@@ -215,7 +183,7 @@ app.post('/api/activate-business', async (req, res) => {
 
         await new Promise(r => setTimeout(r, 4000));
 
-        // 5. تعديل عدد المقاعد
+        // تعديل المقاعد إلى 3
         await page.evaluate(() => {
             const inputs = Array.from(document.querySelectorAll('input'));
             const seatsInput = inputs.find(input => input.value == '5' || input.type === 'number');
@@ -228,7 +196,7 @@ app.post('/api/activate-business', async (req, res) => {
 
         await new Promise(r => setTimeout(r, 2000));
 
-        // 6. حقن بيانات البطاقة
+        // تعبئة بطاقتك المثبتة
         const frames = page.frames();
         for (const frame of frames) {
             try {
@@ -242,7 +210,7 @@ app.post('/api/activate-business', async (req, res) => {
             } catch (err) {}
         }
 
-        // 7. إدخال العنوان وتجنب الضريبة
+        // إدخال اسم وعنوان ولاية بدون ضريبة (أوريغون)
         await page.evaluate(() => {
             const nameInput = document.querySelector('input[name="name"]');
             if (nameInput) {
@@ -261,7 +229,7 @@ app.post('/api/activate-business', async (req, res) => {
             }
         });
 
-        // 8. ضغطة الدفع النهائية
+        // النقر على دفع
         await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll('button'));
             const payBtn = buttons.find(el => el.innerText.includes('Subscribe') || el.innerText.includes('Pay'));
@@ -271,17 +239,14 @@ app.post('/api/activate-business', async (req, res) => {
         await new Promise(r => setTimeout(r, 6000));
         await browser.close();
 
-        // ✅ حرق الـ CDK
         db.codes[cdk].status = 'used';
         writeDB(db);
 
-        return res.status(200).json({ message: 'تم التفعيل بنجاح! تم تطبيق الباقة بـ 3 مقاعد واستخدام البطاقة المثبتة.' });
+        return res.status(200).json({ message: 'تم التفعيل بنجاح! تم الدخول وتطبيق الـ 3 مقاعد واستخدام البطاقة.' });
 
     } catch (e) {
         console.error("AUTOMATION ERROR:", e);
-        if (browser) {
-            try { await browser.close(); } catch (err) {}
-        }
+        if (browser) try { await browser.close(); } catch (err) {}
         return res.status(500).json({ message: 'خطأ تقني: ' + e.message });
     }
 });
