@@ -5,70 +5,73 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>تفعيل ChatGPT Business - Alpha Digital</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
         body { background-color: #0b0f19; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
-        .container { background-color: #1e293b; padding: 35px; border-radius: 16px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4); width: 100%; max-width: 480px; border: 1px solid #334155; }
-        h2 { text-align: center; margin-bottom: 20px; color: #f8fafc; font-size: 20px; }
-        .badge { background: #0284c7; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; display: inline-block; margin-bottom: 15px; }
+        .container { background-color: #1e293b; padding: 35px; border-radius: 16px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4); width: 100%; max-width: 500px; border: 1px solid #334155; }
+        h2 { text-align: center; margin-bottom: 20px; font-size: 20px; }
         .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 6px; font-size: 13px; color: #94a3b8; }
-        input, textarea { width: 100%; padding: 10px 12px; background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; color: white; font-size: 13px; outline: none; }
+        input, textarea { width: 100%; padding: 10px; background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; color: white; outline: none; }
         textarea { height: 110px; resize: none; }
-        input:focus, textarea:focus { border-color: #38bdf8; }
-        button { width: 100%; padding: 12px; background-color: #16a34a; border: none; border-radius: 10px; color: white; font-size: 15px; font-weight: 600; cursor: pointer; }
-        button:hover { background-color: #15803d; }
-        #status-message { margin-top: 15px; text-align: center; font-size: 13px; }
-        .loading { color: #facc15; } .success { color: #4ade80; } .error { color: #f87171; }
-        .hint { font-size: 11px; color: #64748b; margin-top: 4px; }
+        button { width: 100%; padding: 12px; background-color: #16a34a; border: none; border-radius: 10px; color: white; font-weight: bold; cursor: pointer; }
+        button:disabled { background-color: #475569; cursor: not-allowed; }
+        
+        /* مربع البث المباشر */
+        #live-logs {
+            margin-top: 20px;
+            background-color: #020617;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            height: 150px;
+            overflow-y: auto;
+            border: 1px dashed #334155;
+            display: none;
+            color: #38bdf8;
+            line-height: 1.6;
+        }
+        .log-info { color: #38bdf8; }
+        .log-success { color: #4ade80; font-weight: bold; }
+        .log-error { color: #f87171; font-weight: bold; }
     </style>
 </head>
 <body>
 
     <div class="container">
         <h2>تفعيل الباقة المخصصة (3 مقاعد)</h2>
-        <div style="text-align: center;"><span class="badge">Alpha Digital System</span></div>
-        
         <form id="activate-form">
             <div class="form-group">
-                <label for="cdk_input">كود التفعيل الخاص بك (CDK)</label>
-                <input type="text" id="cdk_input" placeholder="مثال: ALPHA-XXXX" required>
+                <label>كود التفعيل (CDK)</label>
+                <input type="text" id="cdk_input" required>
             </div>
-
             <div class="form-group">
-                <label for="session_data">بيانات الجلسة الكاملة (Session / Cookies / Token)</label>
-                <textarea id="session_data" placeholder='الصق بيانات الجلسة الخاصة بحسابك هنا...' required></textarea>
-                <div class="hint">ملاحظة: تأكد من لصق بيانات الجلسة الكاملة لكي يتمكن النظام من التفعيل.</div>
+                <label>بيانات الجلسة الكاملة</label>
+                <textarea id="session_data" required></textarea>
             </div>
-
-            <button type="submit" id="submit-btn">إتمام التفعيل الأوتوماتيكي</button>
+            <button type="submit" id="submit-btn">إتمام التفعيل</button>
         </form>
 
-        <div id="status-message"></div>
+        <!-- شاشة العمليات المباشرة -->
+        <div id="live-logs"></div>
     </div>
 
     <script>
         const savedCdk = localStorage.getItem('valid_cdk');
-        if (savedCdk) {
-            document.getElementById('cdk_input').value = savedCdk;
-        }
+        if (savedCdk) document.getElementById('cdk_input').value = savedCdk;
 
         document.getElementById('activate-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const cdk = document.getElementById('cdk_input').value.trim();
-            let rawSessionData = document.getElementById('session_data').value.trim();
-            const statusDiv = document.getElementById('status-message');
+            const rawSessionData = document.getElementById('session_data').value.trim();
+            const logsDiv = document.getElementById('live-logs');
             const submitBtn = document.getElementById('submit-btn');
 
-            statusDiv.className = 'loading';
-            statusDiv.innerText = 'جاري حقن الجلسة وتنفيذ الترقية أوتوماتيكياً...';
-            submitBtn.disabled = true;
-
             let sessionDataToSend = rawSessionData;
-            try {
-                JSON.parse(rawSessionData);
-            } catch (err) {
-                sessionDataToSend = JSON.stringify({ rawData: rawSessionData });
-            }
+            try { JSON.parse(rawSessionData); } catch (err) { sessionDataToSend = JSON.stringify({ rawData: rawSessionData }); }
+
+            logsDiv.style.display = 'block';
+            logsDiv.innerHTML = '<span class="log-info">بدأ الاتصال بالسيرفر...</span><br>';
+            submitBtn.disabled = true;
 
             try {
                 const response = await fetch('/api/activate-business', {
@@ -77,20 +80,37 @@
                     body: JSON.stringify({ cdk, sessionData: sessionDataToSend })
                 });
 
-                const data = await response.json();
+                // قراءة البث المباشر (Streaming)
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
 
-                if (response.ok) {
-                    statusDiv.className = 'success';
-                    statusDiv.innerText = data.message || 'تم التفعيل بنجاح!';
-                    localStorage.removeItem('valid_cdk');
-                } else {
-                    statusDiv.className = 'error';
-                    statusDiv.innerText = 'فشل: ' + (data.message || 'خطأ في التفعيل.');
-                    submitBtn.disabled = false;
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split('\n\n');
+                    buffer = parts.pop(); // نحتفظ بالجزء غير المكتمل
+
+                    for (const part of parts) {
+                        if (part.startsWith('data: ')) {
+                            const data = JSON.parse(part.substring(6));
+                            logsDiv.innerHTML += `<span class="log-${data.status}">> ${data.message}</span><br>`;
+                            logsDiv.scrollTop = logsDiv.scrollHeight; // التمرير التلقائي للأسفل
+                            
+                            if (data.status === 'success') {
+                                localStorage.removeItem('valid_cdk');
+                                submitBtn.disabled = false;
+                            }
+                            if (data.status === 'error') {
+                                submitBtn.disabled = false;
+                            }
+                        }
+                    }
                 }
             } catch (error) {
-                statusDiv.className = 'error';
-                statusDiv.innerText = 'حدث خطأ في الاتصال بالسيرفر.';
+                logsDiv.innerHTML += '<span class="log-error">> حدث خطأ في الاتصال!</span><br>';
                 submitBtn.disabled = false;
             }
         });
