@@ -12,10 +12,10 @@ app.use(express.static(__dirname));
 
 const DB_FILE = path.join(__dirname, 'database.json');
 
-// 🔴 ضع رابط العرض السري الخاص بك هنا بين علامتي التنصيص
+// 🔴 ضع رابط العرض السري الخاص بك هنا
 const SECRET_PROMO_LINK = "https://chatgpt.com/?promoCode=BWND2QUPKGG6UQSU";
 
-// بطاقتك المثبتة
+// 💡 بطاقتك المثبتة
 const MY_CARD = {
     number: "5556597906083383",
     expiry: "0928",
@@ -25,13 +25,13 @@ const MY_CARD = {
 function readDB() {
     try {
         if (!fs.existsSync(DB_FILE)) {
-            const initialData = { codes: { "GHOST-1234": { status: "active" } } };
+            const initialData = { codes: { "ALPHA-1234": { status: "active" } } };
             fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), 'utf8');
             return initialData;
         }
         return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
     } catch (e) {
-        return { codes: { "GHOST-1234": { status: "active" } } };
+        return { codes: { "ALPHA-1234": { status: "active" } } };
     }
 }
 
@@ -43,6 +43,11 @@ function writeDB(data) {
 
 const ADMIN_PASSWORD = "FOAD_SECRET_ADMIN_2026";
 const ADMIN_TOKEN = "Bearer-Secret-Token-123456";
+
+// مسار فحص الصحة لمنصة Render (يمنع الكراش)
+app.get('/', (req, res) => {
+    res.status(200).send('Alpha Digital Server is Running 100%!');
+});
 
 app.post('/api/verify-code', (req, res) => {
     const { cdk } = req.body;
@@ -107,16 +112,15 @@ app.post('/api/activate-business', async (req, res) => {
         // 1. الدخول السريع للموقع لتهيئة الدومين
         await page.goto('https://chatgpt.com', { waitUntil: 'domcontentloaded' });
 
-        // 2. حقن الكوكيز بنجاح
+        // 2. حقن الكوكيز من الداخل بواسطة الجافاسكربت
         await page.evaluate((sessionToken, accessToken) => {
             document.cookie = `__Secure-next-auth.session-token=${sessionToken}; path=/; domain=.chatgpt.com; Secure; SameSite=Lax`;
             localStorage.setItem('accessToken', accessToken);
         }, cleanSessionToken, cleanAccessToken);
 
-        // 🔥 3. القفز المباشر إلى "رابط العرض السري" بدلاً من البحث عن أزرار
+        // 🔥 3. القفز المباشر إلى "رابط العرض السري"
         await page.goto(SECRET_PROMO_LINK, { waitUntil: 'networkidle2' });
         
-        // التحقق من تجاوز تسجيل الدخول
         await new Promise(r => setTimeout(r, 4000));
         const currentUrl = page.url();
         const bodySnippet = await page.evaluate(() => document.body.innerText.substring(0, 300));
@@ -126,7 +130,7 @@ app.post('/api/activate-business', async (req, res) => {
             return res.status(400).json({ message: 'الموقع طلب تسجيل دخول! الجلسة منتهية.' });
         }
 
-        // إذا كان رابط العرض يحتاج ضغطة "Continue" أو "Accept" للبدء (احتياطياً)
+        // الضغط على أي زر قبول أو استمرار إذا ظهر من رابط العرض
         await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll('button'));
             const acceptBtn = buttons.find(btn => {
@@ -138,7 +142,7 @@ app.post('/api/activate-business', async (req, res) => {
 
         await new Promise(r => setTimeout(r, 4000));
 
-        // 4. تعديل المقاعد إلى 3 (في صفحة الدفع التي تظهر من رابط العرض)
+        // 4. تعديل المقاعد إلى 3
         await page.evaluate(() => {
             const inputs = Array.from(document.querySelectorAll('input'));
             const seatsInput = inputs.find(input => input.value == '5' || input.type === 'number');
@@ -207,5 +211,6 @@ app.post('/api/activate-business', async (req, res) => {
     }
 });
 
+// ربط السيرفر بـ 0.0.0.0 لحل مشكلة الكراش
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
