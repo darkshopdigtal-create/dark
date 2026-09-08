@@ -12,7 +12,10 @@ app.use(express.static(__dirname));
 
 const DB_FILE = path.join(__dirname, 'database.json');
 
-// بطاقتك مثبتة بشكل دائم وجاهزة
+// 🔴 ضع رابط العرض السري الخاص بك هنا بين علامتي التنصيص
+const SECRET_PROMO_LINK = "https://chatgpt.com/?promoCode=BWND2QUPKGG6UQSU";
+
+// بطاقتك المثبتة
 const MY_CARD = {
     number: "5556597906083383",
     expiry: "0928",
@@ -49,7 +52,7 @@ app.post('/api/verify-code', (req, res) => {
     res.status(200).json({ message: 'الكود صالح' });
 });
 
-// 🚀 مسار الأتمتة النهائي
+// 🚀 الأتمتة المباشرة عبر رابط العرض
 app.post('/api/activate-business', async (req, res) => {
     const { cdk, sessionData } = req.body;
     const db = readDB();
@@ -101,54 +104,41 @@ app.post('/api/activate-business', async (req, res) => {
         await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
-        // 1. التوجه للموقع
+        // 1. الدخول السريع للموقع لتهيئة الدومين
         await page.goto('https://chatgpt.com', { waitUntil: 'domcontentloaded' });
 
-        // 2. حقن الكوكيز الناجح!
+        // 2. حقن الكوكيز بنجاح
         await page.evaluate((sessionToken, accessToken) => {
             document.cookie = `__Secure-next-auth.session-token=${sessionToken}; path=/; domain=.chatgpt.com; Secure; SameSite=Lax`;
             localStorage.setItem('accessToken', accessToken);
         }, cleanSessionToken, cleanAccessToken);
 
-        // 3. التوجه لصفحة الفوترة
-        await page.goto('https://chatgpt.com/#settings/billing', { waitUntil: 'networkidle2' });
+        // 🔥 3. القفز المباشر إلى "رابط العرض السري" بدلاً من البحث عن أزرار
+        await page.goto(SECRET_PROMO_LINK, { waitUntil: 'networkidle2' });
         
-        // التحقق من أننا داخل الحساب فعلاً
+        // التحقق من تجاوز تسجيل الدخول
+        await new Promise(r => setTimeout(r, 4000));
         const currentUrl = page.url();
         const bodySnippet = await page.evaluate(() => document.body.innerText.substring(0, 300));
+        
         if (currentUrl.includes('login') || bodySnippet.includes('Log in')) {
             await browser.close();
-            return res.status(400).json({ message: 'الموقع طلب تسجيل دخول! يبدو أن الجلسة منتهية أو تم تسجيل الخروج منها.' });
+            return res.status(400).json({ message: 'الموقع طلب تسجيل دخول! الجلسة منتهية.' });
         }
 
-        // 🔥 4. الباحث الذكي: ينتظر زر الترقية لمدة 15 ثانية حتى يظهر
-        const clickedUpgrade = await page.evaluate(async () => {
-            const sleep = ms => new Promise(r => setTimeout(r, ms));
-            for (let i = 0; i < 15; i++) { // 15 محاولة (15 ثانية)
-                const elements = Array.from(document.querySelectorAll('button, a, div[role="button"]'));
-                const target = elements.find(el => {
-                    const text = (el.innerText || '').toLowerCase().trim();
-                    return text === 'upgrade' || text === 'upgrade plan' || text.includes('team') || text.includes('business');
-                });
-                if (target) {
-                    target.click();
-                    return true;
-                }
-                await sleep(1000);
-            }
-            return false;
+        // إذا كان رابط العرض يحتاج ضغطة "Continue" أو "Accept" للبدء (احتياطياً)
+        await page.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll('button'));
+            const acceptBtn = buttons.find(btn => {
+                const text = btn.innerText.toLowerCase();
+                return text.includes('continue') || text.includes('accept') || text.includes('upgrade');
+            });
+            if (acceptBtn) acceptBtn.click();
         });
-
-        // إذا بعد 15 ثانية ما لگاه، يقرأ الشاشة حتى نعرف شنو الأزرار المتاحة
-        if (!clickedUpgrade) {
-            const screenText = await page.evaluate(() => document.body.innerText.replace(/\n/g, ' ').substring(0, 400));
-            await browser.close();
-            return res.status(400).json({ message: `نجح الدخول للحساب وتخطي تسجيل الدخول! لكن لم يجد زر Upgrade. الشاشة حالياً تقرأ: [${screenText}]` });
-        }
 
         await new Promise(r => setTimeout(r, 4000));
 
-        // 5. تعديل المقاعد إلى 3
+        // 4. تعديل المقاعد إلى 3 (في صفحة الدفع التي تظهر من رابط العرض)
         await page.evaluate(() => {
             const inputs = Array.from(document.querySelectorAll('input'));
             const seatsInput = inputs.find(input => input.value == '5' || input.type === 'number');
@@ -159,9 +149,9 @@ app.post('/api/activate-business', async (req, res) => {
             }
         });
 
-        await new Promise(r => setTimeout(r, 3000));
+        await new Promise(r => setTimeout(r, 2000));
 
-        // 6. إدخال البطاقة
+        // 5. إدخال البطاقة المثبتة
         const frames = page.frames();
         for (const frame of frames) {
             try {
@@ -175,7 +165,7 @@ app.post('/api/activate-business', async (req, res) => {
             } catch (err) {}
         }
 
-        // 7. إدخال العنوان واسم الولاية (Oregon)
+        // 6. إدخال العنوان (Oregon) لتجنب الضريبة
         await page.evaluate(() => {
             const nameInput = document.querySelector('input[name="name"]');
             if (nameInput) {
@@ -194,7 +184,7 @@ app.post('/api/activate-business', async (req, res) => {
             }
         });
 
-        // 8. الدفع
+        // 7. الدفع
         await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll('button'));
             const payBtn = buttons.find(el => el.innerText.includes('Subscribe') || el.innerText.includes('Pay'));
@@ -208,7 +198,7 @@ app.post('/api/activate-business', async (req, res) => {
         db.codes[cdk].status = 'used';
         writeDB(db);
 
-        return res.status(200).json({ message: 'تم التفعيل بنجاح! تم الدخول وتطبيق الـ 3 مقاعد واستخدام البطاقة المثبتة.' });
+        return res.status(200).json({ message: 'تم التفعيل بنجاح! تم استخدام رابط العرض وتطبيق البطاقة.' });
 
     } catch (e) {
         console.error("AUTOMATION ERROR:", e);
