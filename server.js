@@ -44,11 +44,39 @@ function writeDB(data) {
 const ADMIN_PASSWORD = "FOAD_SECRET_ADMIN_2026";
 const ADMIN_TOKEN = "Bearer-Secret-Token-123456";
 
-// مسار فحص الصحة لمنصة Render (يمنع الكراش)
+// 1. مسار فحص الصحة لمنصة Render
 app.get('/', (req, res) => {
     res.status(200).send('Alpha Digital Server is Running 100%!');
 });
 
+// 2. مسارات لوحة الإدارة (اللي كانت مفقودة)
+app.post('/api/admin/login', (req, res) => {
+    const { password } = req.body;
+    if (password === ADMIN_PASSWORD) {
+        return res.status(200).json({ token: ADMIN_TOKEN });
+    }
+    res.status(401).json({ message: 'كلمة المرور خاطئة!' });
+});
+
+app.get('/api/admin/data', (req, res) => {
+    const auth = req.headers['authorization'];
+    if (auth !== ADMIN_TOKEN) return res.status(403).json({ message: 'غير مسموح' });
+    const db = readDB();
+    res.status(200).json({ codes: db.codes });
+});
+
+app.post('/api/admin/generate', (req, res) => {
+    const auth = req.headers['authorization'];
+    if (auth !== ADMIN_TOKEN) return res.status(403).json({ message: 'غير مسموح' });
+    const db = readDB();
+    const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const newCode = `ALPHA-${randomPart}`;
+    db.codes[newCode] = { status: "active" };
+    writeDB(db);
+    res.status(200).json({ message: 'تم التوليد بنجاح', newCode });
+});
+
+// 3. التحقق من الكود
 app.post('/api/verify-code', (req, res) => {
     const { cdk } = req.body;
     const db = readDB();
@@ -57,7 +85,7 @@ app.post('/api/verify-code', (req, res) => {
     res.status(200).json({ message: 'الكود صالح' });
 });
 
-// 🚀 الأتمتة المباشرة عبر رابط العرض
+// 🚀 4. الأتمتة المباشرة عبر رابط العرض
 app.post('/api/activate-business', async (req, res) => {
     const { cdk, sessionData } = req.body;
     const db = readDB();
@@ -109,16 +137,14 @@ app.post('/api/activate-business', async (req, res) => {
         await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
-        // 1. الدخول السريع للموقع لتهيئة الدومين
         await page.goto('https://chatgpt.com', { waitUntil: 'domcontentloaded' });
 
-        // 2. حقن الكوكيز من الداخل بواسطة الجافاسكربت
         await page.evaluate((sessionToken, accessToken) => {
             document.cookie = `__Secure-next-auth.session-token=${sessionToken}; path=/; domain=.chatgpt.com; Secure; SameSite=Lax`;
             localStorage.setItem('accessToken', accessToken);
         }, cleanSessionToken, cleanAccessToken);
 
-        // 🔥 3. القفز المباشر إلى "رابط العرض السري"
+        // القفز المباشر إلى رابط العرض السري
         await page.goto(SECRET_PROMO_LINK, { waitUntil: 'networkidle2' });
         
         await new Promise(r => setTimeout(r, 4000));
@@ -130,7 +156,6 @@ app.post('/api/activate-business', async (req, res) => {
             return res.status(400).json({ message: 'الموقع طلب تسجيل دخول! الجلسة منتهية.' });
         }
 
-        // الضغط على أي زر قبول أو استمرار إذا ظهر من رابط العرض
         await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll('button'));
             const acceptBtn = buttons.find(btn => {
@@ -142,7 +167,6 @@ app.post('/api/activate-business', async (req, res) => {
 
         await new Promise(r => setTimeout(r, 4000));
 
-        // 4. تعديل المقاعد إلى 3
         await page.evaluate(() => {
             const inputs = Array.from(document.querySelectorAll('input'));
             const seatsInput = inputs.find(input => input.value == '5' || input.type === 'number');
@@ -155,7 +179,6 @@ app.post('/api/activate-business', async (req, res) => {
 
         await new Promise(r => setTimeout(r, 2000));
 
-        // 5. إدخال البطاقة المثبتة
         const frames = page.frames();
         for (const frame of frames) {
             try {
@@ -169,7 +192,6 @@ app.post('/api/activate-business', async (req, res) => {
             } catch (err) {}
         }
 
-        // 6. إدخال العنوان (Oregon) لتجنب الضريبة
         await page.evaluate(() => {
             const nameInput = document.querySelector('input[name="name"]');
             if (nameInput) {
@@ -188,7 +210,6 @@ app.post('/api/activate-business', async (req, res) => {
             }
         });
 
-        // 7. الدفع
         await page.evaluate(() => {
             const buttons = Array.from(document.querySelectorAll('button'));
             const payBtn = buttons.find(el => el.innerText.includes('Subscribe') || el.innerText.includes('Pay'));
@@ -198,7 +219,6 @@ app.post('/api/activate-business', async (req, res) => {
         await new Promise(r => setTimeout(r, 8000));
         await browser.close();
 
-        // حرق الكود بعد النجاح
         db.codes[cdk].status = 'used';
         writeDB(db);
 
@@ -211,6 +231,5 @@ app.post('/api/activate-business', async (req, res) => {
     }
 });
 
-// ربط السيرفر بـ 0.0.0.0 لحل مشكلة الكراش
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
